@@ -4,14 +4,19 @@ def backtest(df, model, features):
     cash             = 10000
     position         = 0
     portfolio_values = []
-    split            = int(len(df) * 0.7)  # only test on unseen 30%
+    split            = int(len(df) * 0.7)
+    df_test          = df.iloc[split:]
 
-    for i in range(split, len(df) - 1):
-        row           = df.iloc[i]
-        X             = row[features].values.reshape(1, -1)
-        prediction    = model.predict(X)[0]
-        confidence    = max(model.predict_proba(X)[0])
-        current_price = float(row['Close'].item())
+    # batch predict everything at once instead of row by row
+    X_all         = df_test[features].values
+    predictions   = model.predict(X_all)
+    probabilities = model.predict_proba(X_all)
+    confidences   = probabilities.max(axis=1)
+
+    for i in range(len(df_test) - 1):
+        current_price = float(df_test['Close'].iloc[i].item())
+        prediction    = predictions[i]
+        confidence    = confidences[i]
 
         if prediction == 1 and confidence > 0.65 and position == 0:
             position = cash / current_price
