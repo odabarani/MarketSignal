@@ -1,12 +1,12 @@
 import numpy as np
 
-
 def backtest(df, model, features):
     cash             = 10000
     position         = 0
     portfolio_values = []
+    split            = int(len(df) * 0.7)  # only test on unseen 30%
 
-    for i in range(50, len(df) - 1):
+    for i in range(split, len(df) - 1):
         row           = df.iloc[i]
         X             = row[features].values.reshape(1, -1)
         prediction    = model.predict(X)[0]
@@ -25,17 +25,14 @@ def backtest(df, model, features):
 
     return portfolio_values
 
-
 def calculate_metrics(portfolio_values):
     values  = np.array(portfolio_values)
     returns = np.diff(values) / values[:-1]
 
-    # Sharpe Ratio — annualized, assumes 252 trading days
     sharpe = (returns.mean() / returns.std()) * np.sqrt(252) if returns.std() > 0 else 0
 
-    # Max Drawdown — largest peak to trough drop
-    peak        = np.maximum.accumulate(values)
-    drawdown    = (values - peak) / peak
+    peak         = np.maximum.accumulate(values)
+    drawdown     = (values - peak) / peak
     max_drawdown = drawdown.min() * 100
 
     return round(sharpe, 2), round(max_drawdown, 1)
