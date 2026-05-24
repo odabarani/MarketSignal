@@ -34,7 +34,6 @@ st.markdown("""
     }
     .main { background-color: #0a0a0f; padding: 2rem 3rem; }
     h1 { font-family: 'IBM Plex Mono', monospace !important; font-size: 2rem !important; color: #ffffff !important; }
-
     .metric-card {
         background: #12121a;
         border: 1px solid #1e1e2e;
@@ -64,7 +63,6 @@ st.markdown("""
     }
     .metric-value.up   { color: #00e676; }
     .metric-value.down { color: #ff1744; }
-
     .signal-banner {
         padding: 0.8rem 2rem;
         border-radius: 8px;
@@ -78,7 +76,6 @@ st.markdown("""
     .signal-buy  { background:#003300; border:1px solid #00e676; color:#00e676; }
     .signal-sell { background:#1a0000; border:1px solid #ff1744; color:#ff1744; }
     .signal-hold { background:#1a1200; border:1px solid #ffab00; color:#ffab00; }
-
     .section-label {
         font-family: 'IBM Plex Mono', monospace;
         font-size: 0.7rem;
@@ -96,7 +93,6 @@ st.markdown("""
         margin-top: -0.5rem;
         margin-bottom: 1rem;
     }
-
     div[data-testid="stTextInput"] input {
         background: #12121a !important;
         border: 1px solid #1e1e2e !important;
@@ -122,7 +118,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # --- Header ---
-st.markdown("# 📈 Stock ML Predictor")
+st.markdown("# 📈 MarketSignal")
 st.markdown('<p style="color:#444; font-family:IBM Plex Mono; font-size:0.75rem; letter-spacing:2px;">5-DAY DIRECTION PREDICTION · TECHNICAL + FUNDAMENTAL SIGNALS</p>', unsafe_allow_html=True)
 st.markdown("<br>", unsafe_allow_html=True)
 
@@ -137,14 +133,18 @@ st.markdown("<br>", unsafe_allow_html=True)
 # --- Cached pipeline ---
 @st.cache_resource(show_spinner=False)
 def run_pipeline(ticker):
-    df    = get_stock_data(ticker)
-    df    = add_features(df)
+    df = get_stock_data(ticker)
+    df = add_features(df)
     model, cv_accuracy = train_model(df, FEATURES)
     return df, model, cv_accuracy
 
 if run and ticker:
-    with st.spinner(f"Pulling data and training model for {ticker}..."):
-        df, model, cv_accuracy = run_pipeline(ticker)
+    try:
+        with st.spinner(f"Pulling data and training model for {ticker}..."):
+            df, model, cv_accuracy = run_pipeline(ticker)
+    except ValueError as e:
+        st.error(str(e))
+        st.stop()
 
     latest     = df[FEATURES].iloc[-1].values.reshape(1, -1)
     prediction = int(model.predict(latest)[0])
@@ -159,7 +159,6 @@ if run and ticker:
     # --- Metrics ---
     st.markdown('<div class="section-label">Prediction Output</div>', unsafe_allow_html=True)
     m1, m2, m3, m4 = st.columns(4)
-
     with m1:
         st.markdown(f"""
         <div class="metric-card">
@@ -208,7 +207,6 @@ if run and ticker:
     projected  = [last_price]
     upper_band = [last_price]
     lower_band = [last_price]
-
     for i in range(1, days_ahead + 1):
         drift      = trend * daily_vol * 0.5
         next_p     = projected[-1] * (1 + drift)
@@ -244,38 +242,84 @@ if run and ticker:
 
     # --- Backtest ---
     st.markdown("---")
-    st.subheader("Backtest — How Would This Strategy Have Performed?")
-    st.caption("Simulates trading $10,000 using model signals. Trained on 70% of data, tested on remaining 30% to prevent data leakage.")
-    
+    st.markdown('<div class="section-label">Backtest — How Would This Strategy Have Performed?</div>', unsafe_allow_html=True)
+
     from src.backtest import calculate_metrics
+
+    split      = int(len(df) * 0.7)
+    test_start = df.index[split].strftime("%b %Y")
+    test_end   = df.index[-1].strftime("%b %Y")
+    train_start = df.index[0].strftime("%b %Y")
+    train_end   = df.index[split - 1].strftime("%b %Y")
+
+    st.markdown(
+        f'<div class="chart-caption">'
+        f'Trained on {train_start} – {train_end} &nbsp;|&nbsp; '
+        f'Tested on {test_start} – {test_end} &nbsp;|&nbsp; '
+        f'Starting capital $10,000 &nbsp;|&nbsp; Signals above 65% confidence only'
+        f'</div>',
+        unsafe_allow_html=True
+    )
 
     portfolio    = backtest(df, model, FEATURES)
     final_value  = round(portfolio[-1], 2)
     total_return = round(((final_value - 10000) / 10000) * 100, 1)
     peak         = round(max(portfolio), 2)
     ret_class    = "up" if total_return > 0 else "down"
+
     sharpe, max_dd = calculate_metrics(portfolio)
     sharpe_class   = "up" if sharpe > 1 else "down" if sharpe < 0 else ""
     dd_class       = "down" if max_dd < -20 else ""
 
-    b1, b2, b3, b4, b5 = st.columns(5)
+    # SPY benchmark return over the same test period
+    spy_test        = df['SPY_Close'].iloc[split:split + len(portfolio)]
+    spy_values      = (spy_test / spy_test.iloc[0] * 10000).values
+    spy_return      = round(((spy_values[-1] - 10000) / 10000) * 100, 1)
+    spy_return_class = "up" if spy_return > 0 else "down"
+
+    b1, b2, b3, b4, b5, b6 = st.columns(6)
     with b1:
         st.markdown(f"""<div class="metric-card"><div class="metric-label">Final Value</div><div class="metric-value">${final_value:,.0f}</div><div class="metric-sub">Starting from $10,000</div></div>""", unsafe_allow_html=True)
     with b2:
-        st.markdown(f"""<div class="metric-card"><div class="metric-label">Total Return</div><div class="metric-value {ret_class}">{total_return}%</div><div class="metric-sub">Over full test period</div></div>""", unsafe_allow_html=True)
+        st.markdown(f"""<div class="metric-card"><div class="metric-label">Strategy Return</div><div class="metric-value {ret_class}">{total_return}%</div><div class="metric-sub">{test_start} – {test_end}</div></div>""", unsafe_allow_html=True)
     with b3:
-        st.markdown(f"""<div class="metric-card"><div class="metric-label">Peak Value</div><div class="metric-value">${peak:,.0f}</div><div class="metric-sub">Highest point reached</div></div>""", unsafe_allow_html=True)
+        st.markdown(f"""<div class="metric-card"><div class="metric-label">SPY Return</div><div class="metric-value {spy_return_class}">{spy_return}%</div><div class="metric-sub">Buy-and-hold benchmark</div></div>""", unsafe_allow_html=True)
     with b4:
-        st.markdown(f"""<div class="metric-card"><div class="metric-label">Sharpe Ratio</div><div class="metric-value {sharpe_class}">{sharpe}</div><div class="metric-sub">Above 1.0 is good</div></div>""", unsafe_allow_html=True)
+        st.markdown(f"""<div class="metric-card"><div class="metric-label">Peak Value</div><div class="metric-value">${peak:,.0f}</div><div class="metric-sub">Highest point reached</div></div>""", unsafe_allow_html=True)
     with b5:
+        st.markdown(f"""<div class="metric-card"><div class="metric-label">Sharpe Ratio</div><div class="metric-value {sharpe_class}">{sharpe}</div><div class="metric-sub">Above 1.0 is good</div></div>""", unsafe_allow_html=True)
+    with b6:
         st.markdown(f"""<div class="metric-card"><div class="metric-label">Max Drawdown</div><div class="metric-value {dd_class}">{max_dd}%</div><div class="metric-sub">Worst peak-to-trough drop</div></div>""", unsafe_allow_html=True)
+
     st.markdown("<br>", unsafe_allow_html=True)
 
-    bt_dates = df.index[50:50 + len(portfolio)]
+    # --- Backtest Chart with SPY benchmark ---
+    bt_dates = df.index[split:split + len(portfolio)]
     bt_fig   = go.Figure()
-    bt_fig.add_trace(go.Scatter(x=bt_dates, y=[round(v, 2) for v in portfolio], mode='lines', name='Portfolio Value', line=dict(color='#00e676', width=2), fill='tozeroy', fillcolor='rgba(0,230,118,0.05)'))
-    bt_fig.add_hline(y=10000, line_dash="dash", line_color="#666", line_width=1, annotation_text="Starting Capital ($10,000)", annotation_font_color="#666")
-    bt_fig.update_layout(template='plotly_dark', paper_bgcolor='#12121a', plot_bgcolor='#12121a', height=250, margin=dict(l=10, r=10, t=10, b=10), font=dict(family='IBM Plex Mono'), xaxis_title="Date", yaxis_title="Portfolio Value (USD)", yaxis_tickformat="$,.0f", hovermode='x unified')
+
+    bt_fig.add_trace(go.Scatter(
+        x=bt_dates, y=[round(v, 2) for v in portfolio],
+        mode='lines', name='MarketSignal Strategy',
+        line=dict(color='#00e676', width=2),
+        fill='tozeroy', fillcolor='rgba(0,230,118,0.05)'
+    ))
+    bt_fig.add_trace(go.Scatter(
+        x=bt_dates, y=[round(v, 2) for v in spy_values],
+        mode='lines', name='SPY Buy-and-Hold',
+        line=dict(color='#2979ff', width=1.5, dash='dot')
+    ))
+    bt_fig.add_hline(
+        y=10000, line_dash="dash", line_color="#666", line_width=1,
+        annotation_text="Starting Capital ($10,000)", annotation_font_color="#666"
+    )
+    bt_fig.update_layout(
+        template='plotly_dark', paper_bgcolor='#12121a', plot_bgcolor='#12121a',
+        height=280, margin=dict(l=10, r=10, t=10, b=10),
+        font=dict(family='IBM Plex Mono'),
+        xaxis_title="Date", yaxis_title="Portfolio Value (USD)",
+        yaxis_tickformat="$,.0f", hovermode='x unified',
+        legend=dict(orientation='h', yanchor='bottom', y=1.02)
+    )
     st.plotly_chart(bt_fig, use_container_width=True)
 
 elif run and not ticker:
