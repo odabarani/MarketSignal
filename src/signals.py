@@ -1,10 +1,4 @@
-def generate_signal(prediction, confidence):
-
-    if prediction == 1 and confidence > 0.60:
-        return "BUY"
-
-    elif prediction == 0 and confidence > 0.60:
-        return "SELL"
-
-    else:
+def generate_signal(prediction, probability, threshold=0.60):
+    if probability < threshold:
         return "HOLD"
+    return "UP" if prediction == 1 else "DOWN"
