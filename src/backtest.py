@@ -1,43 +1,56 @@
 import numpy as np
+import pandas as pd
 
-def backtest(df, model, features):
-    cash             = 10000
-    position         = 0
-    portfolio_values = []
-    split            = int(len(df) * 0.7)
-    df_test          = df.iloc[split:]
+def backtest(predictions, starting_capital=10000, transaction_cost_bps=10,
+             slippage_bps=5, confidence_threshold=0.60):
+    data = predictions.copy()
+    required = {"Prediction", "Probability", "Close"}
+    missing = required.difference(data.columns)
+    if missing:
+        raise ValueError(f"Missing backtest columns: {sorted(missing)}")
 
-    # batch predict everything at once instead of row by row
-    X_all         = df_test[features].values
-    predictions   = model.predict(X_all)
-    probabilities = model.predict_proba(X_all)
-    confidences   = probabilities.max(axis=1)
+    data["signal"] = np.where(
+        (data["Probability"] >= confidence_threshold) & (data["Prediction"] == 1),
+        1.0,
+        np.where(
+            (data["Probability"] >= confidence_threshold) & (data["Prediction"] == 0),
+            0.0, np.nan
+        ),
+    )
+    data["position"] = data["signal"].ffill().fillna(0.0)
+    data["next_return"] = data["Close"].pct_change().shift(-1)
+    data["turnover"] = data["position"].diff().abs().fillna(data["position"].abs())
 
-    for i in range(len(df_test) - 1):
-        current_price = float(df_test['Close'].iloc[i].item())
-        prediction    = predictions[i]
-        confidence    = confidences[i]
+    friction = (transaction_cost_bps + slippage_bps) / 10000.0
+    data["strategy_return"] = (
+        data["position"] * data["next_return"] - data["turnover"] * friction
+    )
+    data = data.dropna(subset=["strategy_return"]).copy()
+    equity = starting_capital * (1 + data["strategy_return"]).cumprod()
+    return equity, data
 
-        if prediction == 1 and confidence > 0.65 and position == 0:
-            position = cash / current_price
-            cash     = 0
-        elif prediction == 0 and confidence > 0.65 and position > 0:
-            cash     = position * current_price
-            position = 0
+def benchmark_equity(close, starting_capital=10000):
+    returns = close.pct_change().fillna(0)
+    return starting_capital * (1 + returns).cumprod()
 
-        value = cash + position * current_price
-        portfolio_values.append(value)
-
-    return portfolio_values
-
-def calculate_metrics(portfolio_values):
-    values  = np.array(portfolio_values)
-    returns = np.diff(values) / values[:-1]
-
-    sharpe = (returns.mean() / returns.std()) * np.sqrt(252) if returns.std() > 0 else 0
-
-    peak         = np.maximum.accumulate(values)
-    drawdown     = (values - peak) / peak
-    max_drawdown = drawdown.min() * 100
-
-    return round(sharpe, 2), round(max_drawdown, 1)
+def calculate_metrics(equity):
+    values = np.asarray(equity, dtype=float)
+    if len(values) < 2:
+        return {}
+    returns = pd.Series(values).pct_change().dropna()
+    annualized_return = (values[-1] / values[0]) ** (252 / len(returns)) - 1
+    volatility = returns.std(ddof=1) * np.sqrt(252)
+    sharpe = (
+        returns.mean() / returns.std(ddof=1) * np.sqrt(252)
+        if returns.std(ddof=1) > 0 else 0.0
+    )
+    peak = np.maximum.accumulate(values)
+    max_drawdown = np.min((values - peak) / peak)
+    return {
+        "total_return": values[-1] / values[0] - 1,
+        "annualized_return": annualized_return,
+        "volatility": volatility,
+        "sharpe": sharpe,
+        "max_drawdown": max_drawdown,
+        "win_rate": float((returns > 0).mean()),
+    }
