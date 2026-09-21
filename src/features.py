@@ -1,51 +1,54 @@
+import numpy as np
+
+TECHNICAL_FEATURES = [
+    "MA_5", "MA_20", "Momentum", "Volatility",
+    "Volume_Change", "Volume_Ratio", "RSI", "MACD",
+    "MACD_Signal", "BB_Position", "VIX", "RS_SPY",
+    "Body_Size", "Upper_Wick", "Lower_Wick", "Gap",
+]
+
 def add_features(df):
+    df = df.copy()
 
-    # --- Moving Averages ---
-    df['MA_5']          = df['Close'].rolling(5).mean()
-    df['MA_20']         = df['Close'].rolling(20).mean()
+    df["MA_5"] = df["Close"].rolling(5).mean()
+    df["MA_20"] = df["Close"].rolling(20).mean()
+    df["Momentum"] = df["Close"].pct_change(5)
+    df["Volatility"] = df["Close"].pct_change().rolling(10).std()
 
-    # --- Momentum ---
-    df['Momentum']      = df['Close'].pct_change(5)
+    df["Volume_Change"] = df["Volume"].pct_change()
+    volume_ma20 = df["Volume"].rolling(20).mean()
+    df["Volume_Ratio"] = df["Volume"] / volume_ma20
 
-    # --- Volatility ---
-    df['Volatility']    = df['Close'].rolling(10).std()
+    delta = df["Close"].diff()
+    gain = delta.clip(lower=0).rolling(14).mean()
+    loss = -delta.clip(upper=0).rolling(14).mean()
+    rs = gain / loss.replace(0, np.nan)
+    df["RSI"] = 100 - (100 / (1 + rs))
 
-    # --- Volume Features ---
-    df['Volume_Change'] = df['Volume'].pct_change()
-    df['Volume_MA20']   = df['Volume'].rolling(20).mean()
-    df['Volume_Ratio']  = df['Volume'].squeeze() / df['Volume_MA20'].squeeze()
+    ema12 = df["Close"].ewm(span=12, adjust=False).mean()
+    ema26 = df["Close"].ewm(span=26, adjust=False).mean()
+    df["MACD"] = ema12 - ema26
+    df["MACD_Signal"] = df["MACD"].ewm(span=9, adjust=False).mean()
 
-    # --- RSI ---
-    delta               = df['Close'].diff()
-    gain                = delta.clip(lower=0).rolling(14).mean()
-    loss                = -delta.clip(upper=0).rolling(14).mean()
-    df['RSI']           = 100 - (100 / (1 + gain / loss))
+    rolling_mean = df["Close"].rolling(20).mean()
+    rolling_std = df["Close"].rolling(20).std()
+    df["BB_Position"] = (df["Close"] - rolling_mean) / (2 * rolling_std.replace(0, np.nan))
 
-    # --- MACD ---
-    ema12               = df['Close'].ewm(span=12).mean()
-    ema26               = df['Close'].ewm(span=26).mean()
-    df['MACD']          = ema12 - ema26
-    df['MACD_Signal']   = df['MACD'].ewm(span=9).mean()
+    df["RS_SPY"] = df["Close"].pct_change(20) - df["SPY_Close"].pct_change(20)
 
-    # --- Bollinger Band Position ---
-    rolling_mean        = df['Close'].rolling(20).mean()
-    rolling_std         = df['Close'].rolling(20).std()
-    df['BB_Position']   = (df['Close'].squeeze() - rolling_mean.squeeze()) / (2 * rolling_std.squeeze())
+    df["Body_Size"] = (df["Close"] - df["Open"]).abs()
+    df["Upper_Wick"] = df["High"] - df[["Close", "Open"]].max(axis=1)
+    df["Lower_Wick"] = df[["Close", "Open"]].min(axis=1) - df["Low"]
+    df["Gap"] = df["Open"] / df["Close"].shift(1) - 1
 
-    # --- VIX ---
-    df['VIX']           = df['VIX']
+    # The final five rows have no known 5-day-ahead outcome.
+    future_close = df["Close"].shift(-5)
+    df["Target"] = np.where(
+        future_close.notna(),
+        (future_close > df["Close"]).astype(int),
+        np.nan,
+    )
 
-    # --- Relative Strength vs SPY ---
-    df['RS_SPY']        = df['Close'].squeeze() / df['SPY_Close'].squeeze()
-
-    # --- Candlestick / Price Action ---
-    df['Body_Size']     = abs(df['Close'].squeeze() - df['Open'].squeeze())
-    df['Upper_Wick']    = df['High'].squeeze() - df[['Close', 'Open']].max(axis=1).squeeze()
-    df['Lower_Wick']    = df[['Close', 'Open']].min(axis=1).squeeze() - df['Low'].squeeze()
-    df['Gap']           = df['Open'].squeeze() - df['Close'].shift(1).squeeze()
-
-    # --- Target: 5-day direction ---
-    df['Target']        = (df['Close'].shift(-5) > df['Close']).astype(int)
-
-    df.dropna(inplace=True)
+    df = df.replace([np.inf, -np.inf], np.nan)
+    df = df.dropna(subset=TECHNICAL_FEATURES + ["Target"]).copy()
     return df
