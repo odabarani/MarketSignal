@@ -32,9 +32,7 @@ except Exception as exc:
 st.write(f"Using {len(df):,} labeled trading days from {df.index.min().date()} to {df.index.max().date()}.")
 
 with st.spinner("Running walk-forward evaluation..."):
-    model, predictions, metrics = walk_forward_evaluate(
-        df, TECHNICAL_FEATURES, retrain_every=retrain_days, model_name="XGBoost"
-    )
+    model, predictions, metrics = walk_forward_evaluate(df, TECHNICAL_FEATURES, retrain_every=retrain_days, model_name="XGBoost")
 
 signal_row = predictions.iloc[-1]
 signal = generate_signal(int(signal_row["Prediction"]), float(signal_row["Probability"]), confidence_threshold)
@@ -45,7 +43,7 @@ c1, c2, c3, c4 = st.columns(4)
 c1.metric("5-day UP probability", f"{up_probability:.1%}")
 c2.metric("5-day DOWN probability", f"{down_probability:.1%}")
 c3.metric("Signal", signal)
-c4.metric("Last close", f"${df["Close"].iloc[-1]:,.2f}")
+c4.metric("Last close", f"${df['Close'].iloc[-1]:,.2f}")
 
 st.subheader("Out-of-sample classification performance")
 metric_cols = st.columns(6)
@@ -61,10 +59,10 @@ spy = benchmark_equity(df.loc[equity.index, "SPY_Close"], starting_capital=10000
 strategy_metrics = calculate_metrics(equity)
 
 m1, m2, m3, m4 = st.columns(4)
-m1.metric("Strategy return", f"{strategy_metrics["total_return"]:.1%}")
-m2.metric("Annualized return", f"{strategy_metrics["annualized_return"]:.1%}")
-m3.metric("Sharpe", f"{strategy_metrics["sharpe"]:.2f}")
-m4.metric("Max drawdown", f"{strategy_metrics["max_drawdown"]:.1%}")
+m1.metric("Strategy return", f"{strategy_metrics['total_return']:.1%}")
+m2.metric("Annualized return", f"{strategy_metrics['annualized_return']:.1%}")
+m3.metric("Sharpe", f"{strategy_metrics['sharpe']:.2f}")
+m4.metric("Max drawdown", f"{strategy_metrics['max_drawdown']:.1%}")
 
 fig = go.Figure()
 fig.add_trace(go.Scatter(x=equity.index, y=equity.values, name="MarketSignal"))
@@ -77,9 +75,7 @@ st.caption(f"Backtest assumptions: {transaction_cost_bps:.0f} bps transaction co
 with st.expander("Model comparison"):
     with st.spinner("Comparing models..."):
         comparison = compare_models(df, TECHNICAL_FEATURES)
-    st.dataframe(comparison.style.format({
-        "accuracy": "{:.3f}", "precision": "{:.3f}", "recall": "{:.3f}", "f1": "{:.3f}", "roc_auc": "{:.3f}", "log_loss": "{:.3f}"
-    }), use_container_width=True)
+    st.dataframe(comparison.style.format({"accuracy": "{:.3f}", "precision": "{:.3f}", "recall": "{:.3f}", "f1": "{:.3f}", "roc_auc": "{:.3f}", "log_loss": "{:.3f}"}), use_container_width=True)
 
 st.subheader("Feature importance")
 try:
