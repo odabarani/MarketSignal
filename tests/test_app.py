@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 from streamlit.testing.v1 import AppTest
@@ -24,7 +26,8 @@ def test_dashboard_renders_with_research_explanations(monkeypatch):
     }, index=idx)
     monkeypatch.setattr(src.data_loader, "get_stock_data", lambda ticker: raw)
 
-    app = AppTest.from_file("app.py", default_timeout=60).run()
+    app_path = Path(__file__).resolve().parents[1] / "app.py"
+    app = AppTest.from_file(app_path, default_timeout=60).run()
 
     assert not app.exception
     assert not app.error
