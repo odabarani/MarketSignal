@@ -16,7 +16,7 @@ def _download_close(ticker):
     data = _clean_columns(data)
     if data.empty or "Close" not in data:
         raise ValueError(f"No price data was returned for {ticker}.")
-    return data
+    return data.sort_index()
 
 def get_stock_data(ticker):
     ticker = ticker.strip().upper()
@@ -28,8 +28,9 @@ def get_stock_data(ticker):
     spy = _download_close("SPY")
 
     df["VIX"] = vix["Close"]
+    df["SPY_Open"] = spy["Open"]
     df["SPY_Close"] = spy["Close"]
-    df = df.dropna(subset=["VIX", "SPY_Close"]).copy()
+    df = df.dropna(subset=["VIX", "SPY_Open", "SPY_Close"]).copy()
 
     # Current Yahoo Finance fundamentals are not point-in-time historical
     # observations, so they are intentionally excluded to avoid look-ahead bias.

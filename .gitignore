@@ -138,6 +138,8 @@ celerybeat.pid
 .env
 .envrc
 .venv
+.build-venv/
+*.spec
 env/
 venv/
 ENV/

@@ -1,0 +1,4 @@
+-r requirements.txt
+pywebview>=5.3,<7
+pyinstaller>=6.10,<7
+waitress>=3,<4
