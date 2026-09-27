@@ -51,3 +51,12 @@ def test_walk_forward_rejects_unsorted_dates():
     data = make_model_data().sort_index(ascending=False)
     with pytest.raises(ValueError, match="increasing"):
         model_module.walk_forward_evaluate(data, ["Feature"])
+
+
+def test_validated_features_use_stable_float64_math():
+    data = make_model_data()
+    data[["Feature"]] = data[["Feature"]].astype("float32")
+
+    validated = model_module._validated_data(data, ["Feature"])
+
+    assert validated["Feature"].dtype == np.dtype("float64")

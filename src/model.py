@@ -17,7 +17,9 @@ def build_models(random_state=RANDOM_STATE):
     return {
         "Logistic Regression": Pipeline([
             ("scaler", StandardScaler()),
-            ("model", LogisticRegression(max_iter=1000, random_state=random_state)),
+            ("model", LogisticRegression(
+                max_iter=1000, solver="liblinear", random_state=random_state
+            )),
         ]),
         "Random Forest": RandomForestClassifier(
             n_estimators=200, max_depth=6, min_samples_leaf=5,
@@ -60,7 +62,11 @@ def _validated_data(df, features):
     missing = required.difference(df.columns)
     if missing:
         raise ValueError(f"Missing model columns: {sorted(missing)}")
-    return df.dropna(subset=features + ["Target", "Target_Available_At"]).copy()
+    data = df.dropna(subset=features + ["Target", "Target_Available_At"]).copy()
+    data[features] = data[features].astype("float64")
+    if not np.isfinite(data[features].to_numpy()).all():
+        raise ValueError("Model features must contain only finite values.")
+    return data
 
 
 def walk_forward_evaluate(df, features, initial_train_fraction=0.70,

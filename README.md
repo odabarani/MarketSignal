@@ -1,30 +1,30 @@
 # MarketSignal
 
-MarketSignal is a **research dashboard** that estimates whether a stock will close higher in five trading sessions.
+MarketSignal is a **Dash research app** for 5-day stock-direction experiments.
 
-It includes:
+It uses **walk-forward validation**, a **label embargo**, **next-open execution**, trading costs, baselines, and probability calibration.
 
-- **Walk-forward validation** — trains on the past and tests on later data.
-- **Label embargo** — blocks five-day outcomes that were not known at training time.
-- **Current inference** — uses the newest feature-ready market row.
-- **Next-open backtest** — decisions made after the close enter at the next open.
-- **Trading friction** — includes transaction cost and slippage.
-- **Baselines** — compares the strategy with the stock, SPY, and a majority-class prediction.
-- **Calibration** — reports **Brier score**, log loss, and a probability chart.
-
-## Run it
+## Run locally
 
 ```bash
 pip install -r requirements.txt
-streamlit run app.py
+python app.py
 ```
 
-## Project map
+Open [http://127.0.0.1:8050](http://127.0.0.1:8050).
 
-- `app.py` — Streamlit dashboard
-- `src/features.py` — features and 5-day target
-- `src/model.py` — models and walk-forward validation
-- `src/backtest.py` — execution and portfolio math
-- `tests/` — regression tests
+## Build the Mac app
 
-Yahoo Finance is used for market data. This project is for education and research, not financial advice.
+Double-click `build_macos.command`, or run:
+
+```bash
+./build_macos.command
+```
+
+The regular Mac application is created at `dist/MarketSignal.app`.
+
+## Publish it
+
+`render.yaml` and `Procfile` are included for public hosting. Connect this GitHub repository to Render and deploy the detected web service.
+
+Yahoo Finance provides the market data. This project is for education and research, not financial advice.
