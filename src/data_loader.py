@@ -35,3 +35,23 @@ def get_stock_data(ticker):
     # Current Yahoo Finance fundamentals are not point-in-time historical
     # observations, so they are intentionally excluded to avoid look-ahead bias.
     return df
+
+
+def get_market_data(tickers):
+    """Download several assets while reusing the same market benchmarks."""
+    symbols = list(dict.fromkeys(str(ticker).strip().upper() for ticker in tickers))
+    if not symbols or any(not symbol for symbol in symbols):
+        raise ValueError("Provide at least one valid ticker symbol.")
+
+    vix = _download_close("^VIX")["Close"].rename("VIX")
+    spy = _download_close("SPY")[["Open", "Close"]].rename(
+        columns={"Open": "SPY_Open", "Close": "SPY_Close"}
+    )
+    result = {}
+    for symbol in symbols:
+        frame = _download_close(symbol).join([vix, spy], how="left")
+        frame = frame.dropna(subset=["VIX", "SPY_Open", "SPY_Close"]).copy()
+        if frame.empty:
+            raise ValueError(f"No aligned market data was returned for {symbol}.")
+        result[symbol] = frame
+    return result

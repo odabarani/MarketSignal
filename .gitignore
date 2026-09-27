@@ -203,6 +203,10 @@ cython_debug/
 .cursorignore
 .cursorindexingignore
 
+# Generated research datasets and experiment logs
+data/
+experiments/*.jsonl
+
 # Marimo
 marimo/_static/
 marimo/_lsp/
