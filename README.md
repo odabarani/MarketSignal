@@ -28,3 +28,15 @@ The regular Mac application is created at `dist/MarketSignal.app`.
 `render.yaml` and `Procfile` are included for public hosting. Connect this GitHub repository to Render and deploy the detected web service.
 
 Yahoo Finance provides the market data. This project is for education and research, not financial advice.
+
+## Research pipeline
+
+Build a multi-stock dataset before testing new models:
+
+```bash
+python research_pipeline.py --tickers AAPL MSFT NVDA AMZN GOOGL
+```
+
+This creates **DOWN**, **NO TRADE**, and **UP** targets using next-open returns,
+costs, an SPY comparison, and locked **train**, **validation**, and **test** dates.
+Generated datasets stay local. Use a dated ticker list to reduce survivorship bias.
