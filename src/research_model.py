@@ -64,9 +64,11 @@ def _model_data(frame, features):
     x = clean[list(features)].astype("float64")
     if not np.isfinite(x.to_numpy()).all():
         raise ValueError("Research features must contain only finite values.")
-    y = clean[RESEARCH_TARGET].astype(int)
-    if not set(y.unique()).issubset(set(CLASSES)):
+    if clean.empty:
+        raise ValueError("No complete research rows remain.")
+    if not clean[RESEARCH_TARGET].isin(CLASSES).all():
         raise ValueError("Research target must contain only DOWN, NO_TRADE, and UP.")
+    y = clean[RESEARCH_TARGET].astype(int)
     return clean, x, y
 
 
@@ -75,7 +77,9 @@ def _encode_target(y):
 
 
 def _aligned_probabilities(model, x):
-    raw = model.predict_proba(x)
+    raw = np.asarray(model.predict_proba(x), dtype="float64")
+    if not np.isfinite(raw).all() or (raw < 0).any():
+        raise ValueError("Model returned invalid class probabilities.")
     probabilities = np.zeros((len(x), 3), dtype="float64")
     for source, label in enumerate(model.classes_.astype(int)):
         probabilities[:, label] = raw[:, source]
@@ -94,7 +98,9 @@ def multiclass_metrics(y_true, predictions, probabilities):
     return {
         "accuracy": float(accuracy_score(y_true, predictions)),
         "balanced_accuracy": float(balanced_accuracy_score(y_true, predictions)),
-        "macro_f1": float(f1_score(y_true, predictions, average="macro", zero_division=0)),
+        "macro_f1": float(f1_score(
+            y_true, predictions, labels=CLASSES, average="macro", zero_division=0
+        )),
         "log_loss": float(log_loss(encoded_true, probabilities, labels=ENCODED_CLASSES)),
         "brier": float(np.mean(np.sum((probabilities - one_hot) ** 2, axis=1))),
         "prediction_no_trade_rate": float(np.mean(np.asarray(predictions) == NO_TRADE)),
@@ -131,6 +137,8 @@ def select_model(split, features=TECHNICAL_FEATURES, models=None):
     """Choose a model using training and validation data only."""
     candidates = models or build_multiclass_models()
     _, train_x, train_y = _model_data(split.train, features)
+    if set(train_y.unique()) != set(CLASSES):
+        raise ValueError("Training requires all three target classes; widen the training period.")
     rows = []
     fitted = {}
     for name, candidate in candidates.items():
@@ -148,7 +156,7 @@ def select_model(split, features=TECHNICAL_FEATURES, models=None):
     ) if "Prior baseline" in set(comparison["Model"]) else np.nan
     selected_loss = float(comparison.iloc[0]["log_loss"])
     improvement = baseline_loss - selected_loss
-    promoted = selected_name != "Prior baseline" and improvement > 0
+    promoted = bool(selected_name != "Prior baseline" and improvement > 0)
     return ModelSelection(
         selected_name, comparison, fitted, promoted, float(improvement)
     )
