@@ -40,3 +40,6 @@ python research_pipeline.py --tickers AAPL MSFT NVDA AMZN GOOGL
 This creates **DOWN**, **NO TRADE**, and **UP** targets using next-open returns,
 costs, an SPY comparison, and locked **train**, **validation**, and **test** dates.
 Generated datasets stay local. Use a dated ticker list to reduce survivorship bias.
+
+Model selection uses validation data only. Open the final test once with
+`--evaluate-test`; the result and configuration are added to the experiment ledger.
