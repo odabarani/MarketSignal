@@ -2,15 +2,15 @@ import numpy as np
 import pandas as pd
 import pytest
 from sklearn.dummy import DummyClassifier
-from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import RobustScaler
 
 from src.research import build_research_panel, chronological_split
 from src.research_model import (
     evaluate_locked_test,
     multiclass_metrics,
     select_model,
+    StableSGDClassifier,
 )
 
 
@@ -55,8 +55,10 @@ def test_selection_uses_validation_and_locked_test_is_separate():
     models = {
         "Prior baseline": DummyClassifier(strategy="prior"),
         "Logistic": Pipeline([
-            ("scale", StandardScaler()),
-            ("model", LogisticRegression(max_iter=500, solver="liblinear")),
+            ("scale", RobustScaler()),
+            ("model", StableSGDClassifier(
+                loss="log_loss", max_iter=500, random_state=42
+            )),
         ]),
     }
     selection = select_model(split, models=models)
