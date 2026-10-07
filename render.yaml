@@ -3,7 +3,8 @@ services:
     name: marketsignal
     runtime: python
     # Persistent disks require a paid instance. Review provider pricing before deployment.
-    plan: starter
+    # Leave memory headroom for the web process and isolated model worker.
+    plan: standard
     disk:
       name: marketsignal-data
       mountPath: /var/data

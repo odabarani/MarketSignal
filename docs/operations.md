@@ -5,7 +5,7 @@
 Use one Gunicorn web worker and one service instance while the queue remains
 process-local. The persistent child handles expensive jobs; increasing web-worker
 count does not provide a shared queue. The supplied Render blueprint now probes
-`/ready`. The blueprint specifies a paid Starter service with a 1 GB persistent disk
+`/ready`. The blueprint specifies a paid Standard service with a 1 GB persistent disk
 and `MARKETSIGNAL_DATA_DIR=/var/data/marketsignal`. Review current hosting costs
 before deploying; free services do not provide the required durable storage. No hosting purchase or production deployment has been
 performed by this change.

@@ -48,7 +48,7 @@ this application at `/`, not under a subpath.
 
 An HTTPS deployment is required for installation on a phone. A running cloud
 coding workspace is not a durable user-facing deployment. The checked-in Render
-blueprint specifies a single paid web service with a persistent 1 GB disk and
+blueprint specifies a single paid Standard web service with a persistent 1 GB disk and
 `MARKETSIGNAL_DATA_DIR=/var/data/marketsignal`. Review the provider's current price
 before creating it. No paid service is created by editing this file.
 
