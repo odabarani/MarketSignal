@@ -50,3 +50,10 @@ def test_features_reject_duplicate_dates():
     duplicated = pd.concat([raw, raw.iloc[[-1]]])
     with pytest.raises(ValueError, match="duplicate"):
         add_features(duplicated)
+
+
+def test_features_do_not_silently_bridge_invalid_interior_session():
+    raw = make_data()
+    raw.loc[raw.index[50], "Volume"] = 0
+    with pytest.raises(ValueError, match="missing sessions after warm-up"):
+        add_features(raw)

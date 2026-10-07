@@ -35,9 +35,14 @@ def add_cost_aware_target(
         raise ValueError(f"Missing target columns: {sorted(missing)}")
 
     result = frame.copy()
-    stock_return = result["Close"].shift(-horizon) / result["Open"].shift(-1) - 1
+    # Entry at next open is already ex-dividend: only later ex-dates earn cash.
+    stock_dividends = result.get("Dividends", pd.Series(0., index=result.index))
+    spy_dividends = result.get("SPY_Dividends", pd.Series(0., index=result.index))
+    stock_cash = sum(stock_dividends.shift(-offset) for offset in range(2, horizon + 1))
+    spy_cash = sum(spy_dividends.shift(-offset) for offset in range(2, horizon + 1))
+    stock_return = (result["Close"].shift(-horizon) + stock_cash) / result["Open"].shift(-1) - 1
     benchmark_return = (
-        result["SPY_Close"].shift(-horizon) / result["SPY_Open"].shift(-1) - 1
+        (result["SPY_Close"].shift(-horizon) + spy_cash) / result["SPY_Open"].shift(-1) - 1
     )
     excess_return = stock_return - benchmark_return
     hurdle = (round_trip_cost_bps + minimum_edge_bps) / 10_000

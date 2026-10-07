@@ -23,7 +23,7 @@ def build_models(random_state=RANDOM_STATE):
         ]),
         "Random Forest": RandomForestClassifier(
             n_estimators=200, max_depth=6, min_samples_leaf=5,
-            class_weight="balanced", random_state=random_state, n_jobs=-1,
+            class_weight="balanced", random_state=random_state, n_jobs=2,
         ),
         "XGBoost": XGBClassifier(
             n_estimators=150, max_depth=4, learning_rate=0.03,
@@ -66,11 +66,16 @@ def _validated_data(df, features):
     data[features] = data[features].astype("float64")
     if not np.isfinite(data[features].to_numpy()).all():
         raise ValueError("Model features must contain only finite values.")
+    if not data["Target"].isin([0, 1]).all():
+        raise ValueError("Model targets must be binary UP/DOWN labels.")
+    data["Target_Available_At"] = pd.to_datetime(data["Target_Available_At"])
+    if (data["Target_Available_At"] <= data.index).any():
+        raise ValueError("Forecast labels must become available after their feature date.")
     return data
 
 
 def walk_forward_evaluate(df, features, initial_train_fraction=0.70,
-                          retrain_every=21, model_name="XGBoost"):
+                          retrain_every=21, model_name="XGBoost", evaluation_start=None):
     if not 0 < initial_train_fraction < 1:
         raise ValueError("Initial train fraction must be between 0 and 1.")
     if retrain_every < 1:
@@ -79,7 +84,8 @@ def walk_forward_evaluate(df, features, initial_train_fraction=0.70,
         raise ValueError(f"Unknown model: {model_name}")
 
     data = _validated_data(df, features)
-    split = int(len(data) * initial_train_fraction)
+    split = (int(len(data) * initial_train_fraction) if evaluation_start is None
+             else int(data.index.searchsorted(pd.Timestamp(evaluation_start))))
     if split < 30 or len(data) - split < 30:
         raise ValueError("Not enough historical data for a meaningful out-of-sample test.")
 
@@ -98,14 +104,15 @@ def walk_forward_evaluate(df, features, initial_train_fraction=0.70,
         model.fit(train[features], train["Target"].astype(int))
         probabilities = model.predict_proba(test[features])
         predictions = model.predict(test[features])
+        baseline = int(train["Target"].value_counts().idxmax())
         for idx, prediction, probability in zip(
             test.index, predictions, probabilities[:, 1]
         ):
-            rows.append((idx, int(prediction), float(probability), fit_time))
+            rows.append((idx, int(prediction), float(probability), fit_time, baseline))
         last_model = model
 
     predictions_df = pd.DataFrame(
-        rows, columns=["Date", "Prediction", "Probability", "Fit_Time"]
+        rows, columns=["Date", "Prediction", "Probability", "Fit_Time", "BaselinePrediction"]
     ).set_index("Date")
     evaluated = data.join(predictions_df, how="inner")
     probabilities = np.column_stack([
@@ -114,6 +121,9 @@ def walk_forward_evaluate(df, features, initial_train_fraction=0.70,
     ])
     metrics = classification_metrics(
         evaluated["Target"].astype(int), evaluated["Prediction"], probabilities
+    )
+    metrics["training_baseline_accuracy"] = accuracy_score(
+        evaluated["Target"].astype(int), evaluated["BaselinePrediction"]
     )
     return last_model, evaluated, metrics
 

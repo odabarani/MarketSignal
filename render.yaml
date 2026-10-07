@@ -2,9 +2,21 @@ services:
   - type: web
     name: marketsignal
     runtime: python
-    plan: free
-    buildCommand: pip install -r requirements.txt
+    # Persistent disks require a paid instance. Review provider pricing before deployment.
+    plan: starter
+    disk:
+      name: marketsignal-data
+      mountPath: /var/data
+      sizeGB: 1
+    buildCommand: pip install --require-hashes -r requirements.lock
     startCommand: gunicorn app:server --bind 0.0.0.0:$PORT --workers 1 --timeout 180
+    healthCheckPath: /ready
     envVars:
+      - key: MARKETSIGNAL_DATA_DIR
+        value: /var/data/marketsignal
+      - key: OMP_NUM_THREADS
+        value: "2"
+      - key: OPENBLAS_NUM_THREADS
+        value: "2"
       - key: PYTHON_VERSION
-        value: 3.11.11
+        value: 3.11.16

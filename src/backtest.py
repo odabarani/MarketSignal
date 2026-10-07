@@ -16,7 +16,7 @@ def equity_from_returns(returns, starting_capital=10000, initial_date=None):
 
 
 def backtest(predictions, starting_capital=10000, transaction_cost_bps=10,
-             slippage_bps=5, confidence_threshold=0.60):
+             slippage_bps=5, confidence_threshold=0.60, liquidate=True):
     data = predictions.sort_index().copy()
     required = {"Prediction", "Probability", "Open"}
     missing = required.difference(data.columns)
@@ -33,18 +33,31 @@ def backtest(predictions, starting_capital=10000, transaction_cost_bps=10,
     data["position"] = data["signal"].ffill().fillna(0.0)
     data["ExecutionDate"] = pd.Series(data.index, index=data.index).shift(-1)
     data["RealizationDate"] = pd.Series(data.index, index=data.index).shift(-2)
-    data["market_return"] = data["Open"].shift(-2) / data["Open"].shift(-1) - 1
+    dividends = data.get("Dividends", pd.Series(0., index=data.index))
+    data["market_return"] = (
+        (data["Open"].shift(-2) + dividends.shift(-2)) / data["Open"].shift(-1) - 1
+    )
     data["turnover"] = data["position"].diff().abs().fillna(data["position"].abs())
 
     friction = (transaction_cost_bps + slippage_bps) / 10000.0
     data["strategy_return"] = (
-        data["position"] * data["market_return"] - data["turnover"] * friction
+        (1 - data["turnover"] * friction) * (1 + data["position"] * data["market_return"]) - 1
     )
     if "SPY_Open" in data:
         data["benchmark_return"] = (
-            data["SPY_Open"].shift(-2) / data["SPY_Open"].shift(-1) - 1
+            (data["SPY_Open"].shift(-2)
+             + data.get("SPY_Dividends", pd.Series(0., index=data.index)).shift(-2))
+            / data["SPY_Open"].shift(-1) - 1
         )
     data = data.dropna(subset=["strategy_return", "RealizationDate"]).copy()
+    data["liquidation_turnover"] = 0.
+    if liquidate and not data.empty:
+        last = data.index[-1]
+        data.loc[last, "liquidation_turnover"] = data.loc[last, "position"]
+        data.loc[last, "strategy_return"] = (
+            (1 + data.loc[last, "strategy_return"])
+            * (1 - data.loc[last, "position"] * friction) - 1
+        )
     data.index.name = "DecisionDate"
     realized = pd.Series(
         data["strategy_return"].to_numpy(),
@@ -54,6 +67,16 @@ def backtest(predictions, starting_capital=10000, transaction_cost_bps=10,
         realized, starting_capital, initial_date=data["ExecutionDate"].iloc[0]
     )
     return equity, data
+
+
+def trading_metrics(data):
+    changes = data["position"].diff().fillna(data["position"].iloc[0])
+    return {
+        "entries": int((changes > 0).sum()),
+        "exits": int((changes < 0).sum() + (data["liquidation_turnover"] > 0).sum()),
+        "time_in_market": float((data["position"] > 0).mean()),
+        "one_way_turnover": float(data["turnover"].sum() + data["liquidation_turnover"].sum()),
+    }
 
 
 def benchmark_equity(prices, starting_capital=10000):
@@ -84,5 +107,5 @@ def calculate_metrics(equity):
         "volatility": volatility,
         "sharpe": sharpe,
         "max_drawdown": float(drawdown.min()),
-        "win_rate": float((returns > 0).mean()),
+        "positive_interval_rate": float((returns > 0).mean()),
     }

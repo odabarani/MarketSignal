@@ -71,4 +71,7 @@ def add_features(df):
     ).shift(-FORECAST_HORIZON)
 
     df = df.replace([np.inf, -np.inf], np.nan)
-    return df.dropna(subset=TECHNICAL_FEATURES).copy()
+    result = df.dropna(subset=TECHNICAL_FEATURES).copy()
+    if not result.empty and not result.index.equals(df.loc[result.index[0]:].index):
+        raise ValueError("Feature history has missing sessions after warm-up. Research cannot bridge these gaps.")
+    return result

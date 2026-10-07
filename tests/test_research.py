@@ -6,6 +6,7 @@ import pytest
 
 import src.data_loader as loader
 from src.features import add_features
+from src.market_calendar import calendar
 from src.research import (
     DOWN,
     NO_TRADE,
@@ -34,6 +35,7 @@ def make_market_data(n=140, offset=0):
         "VIX": 20 + np.sin(np.arange(n) / 9),
         "SPY_Open": 200 + np.arange(n) * .1,
         "SPY_Close": 200 + np.arange(n) * .1,
+        "Dividends": 0., "Stock_Splits": 0., "SPY_Dividends": 0., "SPY_Stock_Splits": 0.,
     }, index=index)
 
 
@@ -109,13 +111,23 @@ def test_multi_ticker_loader_reuses_benchmarks(monkeypatch):
     def fake_download(symbol):
         calls.append(symbol)
         frame = make_market_data(40)
-        return frame[["Open", "High", "Low", "Close", "Volume"]]
+        frame.index = calendar("2024-01-02", "2024-03-01").sessions[:40]
+        return frame[["Open", "High", "Low", "Close", "Volume", "Dividends"]].assign(**{"Stock Splits": 0.})
 
     monkeypatch.setattr(loader, "_download_close", fake_download)
-    result = loader.get_market_data(["aaa", "BBB", "AAA"])
+    result = loader.get_market_data(["aaa", "BBB", "AAA"], as_of="2024-03-01 21:00Z")
 
     assert set(result) == {"AAA", "BBB"}
     assert calls.count("^VIX") == 1
     assert calls.count("SPY") == 1
     assert calls.count("AAA") == 1
     assert calls.count("BBB") == 1
+
+
+def test_cost_aware_target_credits_only_dividends_after_entry():
+    index = pd.bdate_range("2024-01-01", periods=4)
+    frame = pd.DataFrame({"Open": 100., "Close": 100., "SPY_Open": 100.,
+                          "SPY_Close": 100., "Dividends": [0, 10, 1, 0],
+                          "SPY_Dividends": [0, 10, .5, 0]}, index=index)
+    target = add_cost_aware_target(frame, horizon=2, round_trip_cost_bps=0)
+    assert target["Forward_Excess_Return"].iloc[0] == pytest.approx(.005)
