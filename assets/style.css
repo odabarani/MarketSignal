@@ -220,3 +220,19 @@ footer { padding-bottom: max(28px, env(safe-area-inset-bottom)); }
     .research-tabs { display: flex !important; flex-direction: row !important; }
     .research-tabs .tab { flex: 1; min-width: 0; padding: 14px 5px !important; font-size: .8rem; }
 }
+
+.workspace-switch { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.library-label { display: block; font-weight: 650; margin: 20px 0 8px; }
+.library-panel > p { color: #b3c2d6; }
+#library-view { margin-top: 24px; min-width: 0; }
+/* Dash 4 dropdowns render their menu outside the panel. */
+.dash-dropdown, .dash-dropdown-content, .dash-dropdown-search-container {
+    background: var(--panel) !important; color: var(--text) !important; border-color: var(--line) !important;
+}
+.dash-dropdown-option { color: var(--text) !important; border-color: var(--line) !important; }
+.dash-dropdown-option:hover, .dash-dropdown-option.selected { background: var(--panel-soft) !important; }
+.dash-dropdown-search { background: #091628 !important; color: var(--text) !important; font-size: 16px !important; }
+.dash-dropdown-value { white-space: normal; overflow-wrap: anywhere; }
+.library-panel table { width: 100%; border-collapse: collapse; font-size: .85rem; }
+.library-panel th, .library-panel td { padding: 10px 5px; border-bottom: 1px solid var(--line); text-align: left; }
+@media (max-width: 520px) { .library-panel table { font-size: .73rem; } }

@@ -68,7 +68,17 @@ const output = process.env.MARKETSIGNAL_SCREENSHOT_DIR || '/tmp/marketsignal-app
       const record = JSON.parse(fs.readFileSync(saved, 'utf8'));
       assert.equal(record.report.settings.ticker, 'AAPL');
       assert.ok(record.report_id);
-      console.log('PASS: live research, result recovery after reload, mobile/desktop charts, retained report download.');
+      await page.locator('#workspace-mode label').filter({hasText: 'Saved'}).click();
+      await page.locator('#library-list-status').filter({hasText: 'saved records available'}).waitFor();
+      await page.locator('#library-record').click();
+      await page.getByRole('option').filter({hasText: 'Research report'}).first().click();
+      await page.waitForFunction(() => !document.querySelector('#library-export').disabled);
+      await page.getByText('Archived results, not current market data.', {exact: false}).waitFor();
+      await page.setViewportSize({width: 390, height: 900});
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+      await page.locator('#library-view .js-plotly-plot .main-svg').first().waitFor();
+      await page.screenshot({path: `${output}/saved-mobile.png`, fullPage: true});
+      console.log('PASS: live research, reload recovery, mobile/desktop charts, retained report download, saved history.');
     }
     // Offline should show a clear state, then a standalone reconnect screen.
     await context.setOffline(true);

@@ -22,6 +22,10 @@ these manual steps. Browser access remains available without installing.
 The chosen ticker and workspace are remembered on each device. Pending research
 and study IDs survive a reload within the same browser session. Data snapshots,
 reports, protocols and final study results live on the server's persistent disk.
+The **Saved** workspace lists the latest 30 reports and 30 studies for reopening
+and download on any device. It displays retained results without downloading
+prices or recomputing models. Use **Refresh saved records** after another device
+finishes a run. Archived estimates always retain their original market dates.
 They are not copied to the phone and are not private account data. There is no
 account login or automatic per-user history synchronization between devices yet.
 

@@ -22,7 +22,7 @@ from src.observability import register_observability
 from src.market_calendar import session_quality, validate_us_sessions
 from src.errors import DataQualityError
 from src.settings import validate_settings
-from src import study_ui
+from src import study_ui, library
 from src.installable import register_installable
 
 BASE_DIR = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
@@ -491,7 +491,7 @@ app.layout = html.Div([
             html.Div("WORKSPACE", className="eyebrow"),
             dcc.RadioItems(
                 id="workspace-mode", value="research",
-                options=[{"label": "Research", "value": "research"}, {"label": "Studies", "value": "studies"}],
+                options=[{"label": "Research", "value": "research"}, {"label": "Studies", "value": "studies"}, {"label": "Saved", "value": "saved"}],
                 className="workspace-switch", persistence=True, persistence_type="local",
             ),
             html.H2("Choose your market"),
@@ -533,6 +533,7 @@ app.layout = html.Div([
                 dcc.Loading(html.Div(research_welcome(), id="research-results"), type="circle", color="#38bdf8"),
             ], id="research-workspace"),
             html.Div(study_ui.layout(), id="study-workspace", style={"display": "none"}),
+            html.Div(library.layout(), id="library-workspace", style={"display": "none"}),
         ], className="results-panel", id="workspace", tabIndex=-1),
     ], className="app-shell"),
     html.Footer("MarketSignal · Research preview. Historical results do not predict future performance."),
@@ -540,12 +541,12 @@ app.layout = html.Div([
 
 app.clientside_callback(
     """function(mode) {
-        const studies = mode === 'studies';
-        return [studies ? {display: 'none'} : {}, studies ? {} : {display: 'none'},
-                studies ? {display: 'none'} : {}];
+        const hidden = {display: 'none'};
+        return [mode === 'research' ? {} : hidden, mode === 'studies' ? {} : hidden,
+                mode === 'research' ? {} : hidden, mode === 'saved' ? {} : hidden];
     }""",
     Output("research-workspace", "style"), Output("study-workspace", "style"),
-    Output("exploratory-controls", "style"), Input("workspace-mode", "value"),
+    Output("exploratory-controls", "style"), Output("library-workspace", "style"), Input("workspace-mode", "value"),
 )
 
 
@@ -671,6 +672,7 @@ def download_report(clicks, context):
 
 
 study_ui.register(app, lambda: MARKET_STORE, JOBS)
+library.register(app, lambda: MARKET_STORE)
 
 
 if __name__ == "__main__":
