@@ -2,7 +2,7 @@
 
 MarketSignal is a **Dash research app** for 5-day stock-direction experiments.
 
-It uses **walk-forward validation**, a **label embargo**, **next-open execution**, trading costs, baselines, and probability calibration.
+It uses **walk-forward validation**, a **label embargo**, **next-open execution**, trading costs, baselines, and a probability calibration chart.
 
 ## Run locally
 
@@ -37,6 +37,18 @@ Build a multi-stock dataset before testing new models:
 python research_pipeline.py --tickers AAPL MSFT NVDA AMZN GOOGL
 ```
 
-This creates **DOWN**, **NO TRADE**, and **UP** targets using next-open returns,
-costs, an SPY comparison, and locked **train**, **validation**, and **test** dates.
-Generated datasets stay local. Use a dated ticker list to reduce survivorship bias.
+Research targets mean **underperform SPY**, **within the cost band**, and
+**outperform SPY** over five sessions from the next open. These differ from the
+app's stock-direction labels. A supplied ticker list is not a historical universe.
+
+Compare raw indicators, **price-relative features**, and **market context** on
+one saved dataset with fixed train/validation dates:
+
+```bash
+python research_pipeline.py --input data/research_panel.csv --output data/comparison.csv --compare-features
+```
+
+Every comparison is logged locally with features, settings, and code/data hashes.
+`--evaluate-test` opens the final test; the same ledger blocks overlapping reuse.
+Keep that ledger. An already viewed test period is no longer untouched.
+See [research results](docs/research-results.md) for the latest validation findings.

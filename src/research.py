@@ -69,12 +69,14 @@ def build_research_panel(
     for ticker, raw in market_data.items():
         symbol = str(ticker).strip().upper()
         featured = add_features(raw)
-        featured = add_cost_aware_target(
-            featured,
+        labelled = add_cost_aware_target(
+            raw.sort_index(),
             horizon=horizon,
             round_trip_cost_bps=round_trip_cost_bps,
             minimum_edge_bps=minimum_edge_bps,
         )
+        for column in [RESEARCH_TARGET, "Forward_Excess_Return", "Target_Available_At"]:
+            featured[column] = labelled[column]
         featured["Ticker"] = symbol
         featured["Sector"] = sectors.get(symbol, "Unknown")
         frames.append(featured.reset_index(names="Date"))
@@ -95,7 +97,8 @@ class ChronologicalSplit:
     validation_end: pd.Timestamp
 
 
-def chronological_split(panel, train_fraction=0.60, validation_fraction=0.20):
+def chronological_split(panel, train_fraction=0.60, validation_fraction=0.20,
+                        train_end=None, validation_end=None):
     """Create locked date splits and embargo labels unavailable at each boundary."""
     if not isinstance(panel.index, pd.MultiIndex) or panel.index.names[:2] != [
         "Date", "Ticker"
@@ -115,8 +118,15 @@ def chronological_split(panel, train_fraction=0.60, validation_fraction=0.20):
     )
     if validation_position >= len(dates) - 1:
         raise ValueError("Split fractions leave too few test dates.")
-    train_end = dates[train_position]
-    validation_end = dates[validation_position]
+    if (train_end is None) != (validation_end is None):
+        raise ValueError("Supply both train_end and validation_end together.")
+    if train_end is None:
+        train_end = dates[train_position]
+        validation_end = dates[validation_position]
+    else:
+        train_end, validation_end = pd.Timestamp(train_end), pd.Timestamp(validation_end)
+        if not dates.min() <= train_end < validation_end < dates.max():
+            raise ValueError("Split dates must be ordered and within the dataset.")
 
     feature_dates = panel.index.get_level_values("Date")
     available = pd.to_datetime(panel["Target_Available_At"])
@@ -142,7 +152,7 @@ def dataset_fingerprint(panel):
 
 
 def record_experiment(path, config, metrics, panel, notes=""):
-    """Append an immutable JSON-lines record of a research trial."""
+    """Append a JSON-lines record of a research trial."""
     record = {
         "experiment_id": str(uuid4()),
         "created_at": datetime.now(timezone.utc).isoformat(),
@@ -154,5 +164,5 @@ def record_experiment(path, config, metrics, panel, notes=""):
     destination = Path(path)
     destination.parent.mkdir(parents=True, exist_ok=True)
     with destination.open("a", encoding="utf-8") as handle:
-        handle.write(json.dumps(record, sort_keys=True, default=str) + "\n")
+        handle.write(json.dumps(record, sort_keys=True, default=str, allow_nan=False) + "\n")
     return record
