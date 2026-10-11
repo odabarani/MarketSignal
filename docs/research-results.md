@@ -31,3 +31,24 @@ Snapshot SHA-256:
 Full local manifests and the experiment ledger contain all candidate scores and
 parameters. Next: purged walk-forward validation and chronological probability
 calibration, then broader point-in-time data and prospective paper evaluation.
+
+## Walk-forward calibration
+
+The same snapshot was evaluated across **13 expanding windows**, from August 2,
+2017 through February 5, 2024: 7,865 stock-days per candidate. The fixed setup used
+504 initial training dates, 126 calibration dates and 126 evaluation dates.
+Boundary-crossing labels were removed; 76 trailing development dates did not fill
+a complete window. The later test period remained excluded.
+
+| Candidate | Pooled log loss | Brier score |
+| --- | ---: | ---: |
+| Prior baseline | 0.962040 | 0.590348 |
+| XGBoost, raw | 0.994216 | 0.609563 |
+| XGBoost, calibrated | 0.993454 | 0.607414 |
+
+**Temperature scaling** slightly improved XGBoost's probability scores, but the
+baseline still won. Its top-class predictions did not change. All candidates and
+periods are visible in the app's **Research Lab**, including weaker results.
+This reused development data: it is not new evidence from an untouched holdout.
+Next: broaden historical universe coverage and test stability across sectors
+before choosing a model for prospective paper evaluation.

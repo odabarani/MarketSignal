@@ -52,3 +52,20 @@ Every comparison is logged locally with features, settings, and code/data hashes
 `--evaluate-test` opens the final test; the same ledger blocks overlapping reuse.
 Keep that ledger. An already viewed test period is no longer untouched.
 See [research results](docs/research-results.md) for the latest validation findings.
+
+## Research Lab
+
+Open **Research Lab** from the app for interactive performance and confidence charts.
+A saved five-stock experiment is included, so it works immediately after pulling.
+It is historical development research, not a live forecast.
+
+To run your own **purged walk-forward validation** and **temperature scaling**:
+
+```bash
+python walk_forward_pipeline.py --input data/research_panel.csv
+```
+
+This uses the snapshot's saved validation cutoff and excludes the later test period.
+Results appear in the Lab and in `data/walk_forward.html`, which also opens offline.
+The model trains on the past, calibrates on a separate block, then scores the next
+block. Calibration adjusts confidence; it does not guarantee better predictions.

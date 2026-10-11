@@ -1,11 +1,13 @@
 import os
 import sys
+import json
 from functools import lru_cache
 from pathlib import Path
 
 import pandas as pd
 import plotly.graph_objects as go
 from dash import Dash, Input, Output, State, dcc, html
+from flask import Response
 
 from src.backtest import backtest, calculate_metrics, equity_from_returns
 from src.data_loader import get_stock_data
@@ -20,6 +22,32 @@ app = Dash(
     assets_folder=str(BASE_DIR / "assets"),
 )
 server = app.server
+
+
+@server.route("/research-lab")
+def research_lab():
+    """Serve the saved multi-stock experiment without fitting or downloading."""
+    from src.research_report import render_report
+
+    default_report = BASE_DIR / "data/walk_forward.json"
+    if not default_report.exists():
+        default_report = BASE_DIR / "docs/research-lab.json"
+    report_path = Path(os.getenv("MARKETSIGNAL_RESEARCH_REPORT", default_report))
+    if not report_path.exists():
+        return Response(
+            '<!doctype html><html lang="en"><meta name="viewport" content="width=device-width">'
+            '<title>MarketSignal · Research Lab</title><link rel="stylesheet" href="/assets/style.css">'
+            '<main class="page-header"><div class="eyebrow">Research Lab</div>'
+            '<h1>No experiment yet</h1><p>Run the walk-forward research pipeline to create '
+            'a saved report. This page will show performance and calibration charts.</p>'
+            '<p>Setup instructions are in the repository README.</p><a href="/">Back to MarketSignal</a></main></html>',
+            mimetype="text/html",
+        )
+    try:
+        return Response(render_report(json.loads(report_path.read_text())), mimetype="text/html")
+    except (ValueError, KeyError, TypeError, OSError, StopIteration):
+        return Response("Research report could not be loaded. Regenerate it with the walk-forward pipeline.",
+                        status=503, mimetype="text/plain")
 
 
 @lru_cache(maxsize=16)
@@ -320,6 +348,7 @@ app.layout = html.Div([
             "A transparent 5-day stock-direction experiment with walk-forward testing.",
             className="subtitle",
         ),
+        html.A("Explore the Research Lab →", href="/research-lab", className="lab-link"),
     ], className="page-header"),
     html.Main([
         html.Aside([
