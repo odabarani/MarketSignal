@@ -12,6 +12,7 @@ python3 -m venv .build-venv
   --windowed \
   --name MarketSignal \
   --add-data "assets:assets" \
+  --add-data "docs/research-lab.json:docs" \
   --collect-data xgboost \
   --collect-binaries xgboost \
   desktop.py

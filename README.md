@@ -2,6 +2,11 @@
 
 MarketSignal is a **Dash research app** for 5-day stock-direction experiments.
 
+Search by **company name or ticker** (for example, `nv` finds NVIDIA / `NVDA`).
+The selected company's daily price, model signal, historical checks, and a separate
+**Yahoo Finance analyst view** appear together. Analyst ratings and price targets
+show when they were retrieved; they do not train or override the model.
+
 It uses **walk-forward validation**, a **label embargo**, **next-open execution**, trading costs, baselines, and a probability calibration chart.
 
 ## Run locally
@@ -52,3 +57,20 @@ Every comparison is logged locally with features, settings, and code/data hashes
 `--evaluate-test` opens the final test; the same ledger blocks overlapping reuse.
 Keep that ledger. An already viewed test period is no longer untouched.
 See [research results](docs/research-results.md) for the latest validation findings.
+
+## Research Lab
+
+Open **Research Lab** from the app for interactive performance and confidence charts.
+A saved five-stock experiment is included, so it works immediately after pulling.
+It is historical development research, not a live forecast.
+
+To run your own **purged walk-forward validation** and **temperature scaling**:
+
+```bash
+python walk_forward_pipeline.py --input data/research_panel.csv
+```
+
+This uses the snapshot's saved validation cutoff and excludes the later test period.
+Results appear in the Lab and in `data/walk_forward.html`, which also opens offline.
+The model trains on the past, calibrates on a separate block, then scores the next
+block. Calibration adjusts confidence; it does not guarantee better predictions.
