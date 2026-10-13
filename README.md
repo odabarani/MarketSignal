@@ -2,6 +2,11 @@
 
 MarketSignal is a **Dash research app** for 5-day stock-direction experiments.
 
+Search by **company name or ticker** (for example, `nv` finds NVIDIA / `NVDA`).
+The selected company's daily price, model signal, historical checks, and a separate
+**Yahoo Finance analyst view** appear together. Analyst ratings and price targets
+show when they were retrieved; they do not train or override the model.
+
 It uses **walk-forward validation**, a **label embargo**, **next-open execution**, trading costs, baselines, and a probability calibration chart.
 
 ## Run locally
