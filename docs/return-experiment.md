@@ -74,6 +74,7 @@ baselines. Its choices used prior selection outcomes, not each window's future.
 
 No candidate is promoted. These stocks were selected with knowledge of today's
 survivors, and results have no statistical superiority or untouched-test claim.
-The next test must broaden the universe and compare against the strong simple
-portfolio before adding model complexity. The app's live-facing model is not
-replaced by this development experiment.
+The subsequent [ETF test](etf-locked-evaluation.md) broadened the universe and
+again found no learned model that beat the simple baselines. The app's live-facing
+model is not replaced by this development experiment; further strategy changes
+need new forward evidence before promotion.

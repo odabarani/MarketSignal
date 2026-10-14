@@ -84,5 +84,6 @@ python strategy_pipeline.py --input data/feature_comparison.csv --report data/wa
 It saves a scoreboard, daily equity, trade records, and an offline interactive
 chart in `data/strategy_comparison.*`. Keep the experiment ledger with the data.
 See the [first diagnostic results](strategy-results.md) for the current evidence.
-The next [expected-return experiment](return-experiment.md) tests retaining
-positions, volatility sizing, and selection before each evaluation window.
+The [expected-return experiment](return-experiment.md) documents the later
+absolute-return comparison, retained positions, volatility sizing, and
+chronological selection.
