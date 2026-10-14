@@ -62,4 +62,9 @@ python holdout_uncertainty.py
 ```
 
 The report records the equity file hash, bootstrap settings, and both comparison
-statistics in `data/sector_etf_holdout_uncertainty.json`.
+statistics in `data/sector_etf_holdout_uncertainty.json`. Repeating the analysis
+with 5, 10, 40, and 60-session blocks leaves the return interval crossing zero
+(-16.4% to +4.3% across those settings); the share of paths with positive
+relative growth stays between 9.0% and 10.9%. The probability of lower strategy
+drawdown stays between 95.7% and 98.3%. This sensitivity check does not change
+the interpretation above.

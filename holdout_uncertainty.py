@@ -106,6 +106,34 @@ def compare_equity_curves(
     }
 
 
+def block_length_sensitivity(
+    equity: pd.DataFrame,
+    strategy: str,
+    benchmark: str,
+    *,
+    block_sessions: tuple[int, ...] = (5, 10, 20, 40, 60),
+    resamples: int = 20_000,
+    seed: int = 20_261_014,
+) -> list[dict]:
+    """Summarize whether the paired bootstrap conclusion depends on block size."""
+    if not block_sessions or len(set(block_sessions)) != len(block_sessions):
+        raise ValueError("Provide at least one unique block length.")
+    summaries = []
+    for length in block_sessions:
+        result = compare_equity_curves(
+            equity, strategy, benchmark, block_sessions=length,
+            resamples=resamples, seed=seed,
+        )
+        summaries.append({
+            "block_sessions": length,
+            "relative_growth_interval": result["bootstrap_annualized_relative_growth_2_5_50_97_5_pct"],
+            "share_relative_growth_positive": result["bootstrap_share_relative_growth_positive"],
+            "max_drawdown_gap_interval": result["bootstrap_max_drawdown_gap_2_5_50_97_5_pct"],
+            "share_strategy_lower_drawdown": result["bootstrap_share_strategy_lower_drawdown"],
+        })
+    return summaries
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--input", type=Path, default=Path("data/sector_etf_locked.equity.csv"))
@@ -113,6 +141,7 @@ def main() -> None:
     parser.add_argument("--strategy", default="Equal-weight volatility target")
     parser.add_argument("--benchmark", default="SPY buy & hold")
     parser.add_argument("--block-sessions", type=int, default=20)
+    parser.add_argument("--sensitivity-blocks", nargs="+", type=int, default=[5, 10, 20, 40, 60])
     parser.add_argument("--resamples", type=int, default=20_000)
     parser.add_argument("--seed", type=int, default=20_261_014)
     args = parser.parse_args()
@@ -125,6 +154,10 @@ def main() -> None:
     )
     report["input"] = str(args.input)
     report["input_sha256"] = hashlib.sha256(raw).hexdigest()
+    report["block_length_sensitivity"] = block_length_sensitivity(
+        equity, args.strategy, args.benchmark,
+        block_sessions=tuple(args.sensitivity_blocks), resamples=args.resamples, seed=args.seed,
+    )
     args.report.parent.mkdir(parents=True, exist_ok=True)
     args.report.write_text(json.dumps(report, indent=2, allow_nan=False) + "\n")
     print(f"Observed relative annualized growth: {report['observed_annualized_relative_growth']:.2%}")
