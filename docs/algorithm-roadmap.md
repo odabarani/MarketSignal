@@ -18,34 +18,44 @@ No candidate has earned a live-trading recommendation yet.
   one candidate, then evaluate later data once. Repeatedly tuning on inspected
   data creates **backtest overfitting** ([Bailey et al.](https://www.davidhbailey.com/dhbpapers/backtest-prob.pdf)).
 
-## Work order
+## Evidence so far
 
-1. **Execution alignment:** turn saved probabilities into a portfolio that enters
-   at the next open and exits at the fifth close. Include both trading fees,
-   slippage scenarios, idle cash, final liquidation, and daily valuations.
-2. **Better target:** compare predictions of absolute return and downside with
-   the existing direction/relative classes. Correctly predicting “beats SPY”
-   does not imply making money when the market falls.
-3. **Broader evidence:** first compare dividend-adjusted sector, broad-market,
-   international, and defensive ETFs from one complete session panel. The
-   `prepare_return_snapshot.py` command freezes that source and marks a later
-   period for one locked evaluation. ETF breadth does not replace historical
-   individual-stock membership or delisted coverage. The first [ETF holdout
-   result](etf-locked-evaluation.md) still favors SPY for return. A second
-   [49-industry comparison](industry-portfolio-evaluation.md) selected a
-   low-volatility momentum rule, but it underperformed the market in its later
-   interval. That interval overlaps dates used in the ETF development sample,
-   so it is not a fully independent project-wide test. Future paper tracking is
-   still needed for genuinely unseen evidence.
-4. **Small model competition:** start with regularized linear models, shallow
-   boosted trees, and simple rules. Use nested chronological selection; reserve
-   later windows for scoring the complete frozen model and portfolio policy.
-5. **Portfolio controls:** test diversification, volatility sizing, concentration,
-   liquidity limits, and a cost-aware option to stay in cash. Position size and
-   prediction quality both affect results.
-6. **Prospective paper trading:** save decisions before outcomes arrive, then
-   reconcile realistic fills and costs. Current historical dates have been
-   inspected; future observations supply the next prospective evidence.
+- **Execution and target:** the return pipeline buys at the next open, holds
+  through the fifth session, exits at the sixth open, charges costs on turnover,
+  and keeps daily portfolio values. Absolute-return forecasts were compared
+  with simple rules; the learned models did not beat equal-weight stocks in the
+  five-stock development sample.
+- **Broader comparison:** the [ETF holdout](etf-locked-evaluation.md) favored
+  SPY for return. Its uncertainty check suggests lower drawdown for the
+  volatility-sized ETF strategy, while its relative-return range still includes
+  underperformance and outperformance. The [industry test](industry-portfolio-evaluation.md)
+  also underperformed the market and overlaps previously inspected dates.
+- **Public-data limit:** available free stock-price panels have material gaps in
+  delisted histories. Do not describe those results as survivorship-bias-free.
+  [CRSP documents active and inactive security coverage](https://www.crsp.org/research/crsp-us-stock-databases/),
+  while a [public S&P 500 price panel](https://github.com/Johnbrick123/sp500-data)
+  reports substantial gaps for delisted members. The current historical
+  comparisons therefore use public ETF and reconstructed industry portfolios.
+- **Forward evidence:** the paper tracker records decisions before outcomes and
+  has one signal awaiting its exit data. This is the only current source of
+  genuinely unseen performance evidence.
+
+## Next work
+
+1. **Keep paper tracking intact.** Reconcile each forecast only after its exit
+   open is observable. Preserve the saved inputs, source hashes, frozen model
+   settings, fills, and cost scenarios; never replace an earlier signal.
+2. **Use public historical data with clear labels.** Continue testing portfolio
+   rules on public ETF and industry series, including market, cash, equal-weight,
+   momentum, and volatility-sized baselines. Report results by year and market
+   regime. Treat all dates already examined as development data.
+3. **Do not promote a learned model yet.** The current models lost to simple
+   baselines. Any new features or policy changes must be selected only on
+   development data, then frozen before the next future paper observations.
+4. **Reassess only after enough prospective evidence accumulates.** Compare net
+   return, drawdown, turnover, and forecast calibration against fixed baselines
+   across multiple market conditions. A favorable short run is not a live-trading
+   recommendation.
 
 ## First diagnostic
 
