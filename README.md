@@ -9,6 +9,10 @@ show when they were retrieved; they do not train or override the model.
 
 It uses **walk-forward validation**, a **label embargo**, **next-open execution**, trading costs, baselines, and a probability calibration chart.
 
+Our next goal is better **returns after costs**, with controlled **drawdowns**.
+The [algorithm roadmap](docs/algorithm-roadmap.md) explains the competition and
+the new portfolio diagnostic. The current signals have not established an edge.
+
 ## Run locally
 
 ```bash
