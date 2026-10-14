@@ -31,7 +31,12 @@ No candidate has earned a live-trading recommendation yet.
    `prepare_return_snapshot.py` command freezes that source and marks a later
    period for one locked evaluation. ETF breadth does not replace historical
    individual-stock membership or delisted coverage. The first [ETF holdout
-   result](etf-locked-evaluation.md) still favors SPY for return.
+   result](etf-locked-evaluation.md) still favors SPY for return. A second
+   [49-industry comparison](industry-portfolio-evaluation.md) selected a
+   low-volatility momentum rule, but it underperformed the market in its later
+   interval. That interval overlaps dates used in the ETF development sample,
+   so it is not a fully independent project-wide test. Future paper tracking is
+   still needed for genuinely unseen evidence.
 4. **Small model competition:** start with regularized linear models, shallow
    boosted trees, and simple rules. Use nested chronological selection; reserve
    later windows for scoring the complete frozen model and portfolio policy.

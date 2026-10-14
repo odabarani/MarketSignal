@@ -85,6 +85,12 @@ The second command refuses to overwrite its results. It compares the frozen
 choice with the same simple and learned candidates at three cost levels.
 See the [ETF holdout result](docs/etf-locked-evaluation.md).
 
+For a longer sector-history comparison, use the Fama/French **49 Industry
+Portfolios**. It selects a low-volatility momentum rule in development, but that
+rule earned less than the market in the later sample. The dates overlap part of
+the earlier ETF research, so treat it as an additional check rather than a new
+independent proof. See the [industry results and setup](docs/industry-portfolio-evaluation.md).
+
 For forward-only **paper tracking**, run after the US market closes:
 
 ```bash
