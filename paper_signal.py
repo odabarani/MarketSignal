@@ -61,7 +61,10 @@ def code_fingerprint():
     return digest.hexdigest()
 
 
-def reconcile_signals(prepared, signal_events, reconciled_ids, source_hash, ledger):
+def reconcile_signals(prepared, signal_events, reconciled_ids, source_hash, ledger,
+                      source_text, snapshot_dir):
+    if not isinstance(source_text, str) or sha256(source_text.encode("utf-8")).hexdigest() != source_hash:
+        raise ValueError("Reconciliation source text must match its saved hash.")
     dates = prepared.index.get_level_values("Date").unique().sort_values()
     latest = dates[-1]
     new_count = 0
@@ -93,9 +96,23 @@ def reconcile_signals(prepared, signal_events, reconciled_ids, source_hash, ledg
             values = np.asarray(values, dtype=float)
             errors[candidate] = {"assets": len(values), "mae": float(np.abs(values).mean()),
                                  "rmse": float(np.sqrt(np.mean(values ** 2)))}
+        snapshot_dir = Path(snapshot_dir)
+        snapshot_dir.mkdir(parents=True, exist_ok=True)
+        snapshot = snapshot_dir / f"{latest:%Y-%m-%d}-{source_hash[:12]}.csv.gz"
+        source_bytes = source_text.encode("utf-8")
+        if snapshot.exists():
+            with gzip_open(snapshot, "rb") as handle:
+                if handle.read() != source_bytes:
+                    raise ValueError("A different reconciliation source already exists for this hash.")
+        else:
+            with gzip_open(snapshot, "wb") as handle:
+                handle.write(source_bytes)
+        snapshot_hash = sha256(snapshot.read_bytes()).hexdigest()
         append_event(ledger, {"event": "paper_reconciled", "signal_id": signal["signal_id"],
                               "signal_date": str(signal_date.date()), "exit_open_date": str(expiry.date()),
                               "observed_through": str(latest.date()), "source_hash": source_hash,
+                              "source_snapshot": str(snapshot), "source_snapshot_hash": snapshot_hash,
+                              "reconciliation_code_fingerprint": code_fingerprint(),
                               "forecast_errors": errors, "outcomes": outcomes,
                               "created_at_utc": datetime.now(timezone.utc).isoformat()})
         reconciled_ids.add(signal["signal_id"])
@@ -137,6 +154,7 @@ def main(argv=None):
     parser.add_argument("--tickers", nargs="+", default=DEFAULT_TICKERS)
     parser.add_argument("--ledger", default="data/paper/signals.jsonl")
     parser.add_argument("--snapshot-dir", default="data/paper/snapshots")
+    parser.add_argument("--reconciliation-snapshot-dir", default="data/paper/reconciliation-snapshots")
     parser.add_argument("--input", help="Use a saved current-session CSV snapshot instead of downloading.")
     args = parser.parse_args(argv)
     tickers = list(dict.fromkeys(symbol.strip().upper() for symbol in args.tickers))
@@ -165,7 +183,10 @@ def main(argv=None):
     prepared = prepare_return_panel(raw, as_of, POLICY["horizon"])
     source_text = raw.reset_index().to_csv(index=False, float_format="%.12g")
     source_hash = sha256(source_text.encode("utf-8")).hexdigest()
-    reconciled = reconcile_signals(prepared, signals, reconciled_ids, source_hash, ledger)
+    reconciled = reconcile_signals(
+        prepared, signals, reconciled_ids, source_hash, ledger, source_text,
+        args.reconciliation_snapshot_dir,
+    )
 
     if signals:
         last_date = pd.Timestamp(signals[-1]["as_of"])

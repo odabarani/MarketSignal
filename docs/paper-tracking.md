@@ -12,11 +12,13 @@ realized forecast errors once the exit open is available. Paper equity marks
 remain invested and do not assume a terminal sale.
 
 Each signal is append-only in `data/paper/signals.jsonl`; its compressed adjusted
-price snapshot is saved under `data/paper/snapshots/`. The log includes hashes,
-model settings, predictions, weights, execution timing, and later outcomes. Keep
-both paths together as the research record. Run the command again after future
-closes to reconcile matured forecasts and create a new signal when due. It never
-sends orders to a broker.
+price snapshot is saved under `data/paper/snapshots/`. When a forecast matures,
+the exact updated data used to calculate its outcome is saved under
+`data/paper/reconciliation-snapshots/`, with its hash and the reconciliation
+code fingerprint in the event. Keep the ledger and both snapshot folders
+together as the research record. Run the command again after future closes to
+reconcile matured forecasts and create a new signal when due. It never sends
+orders to a broker.
 
 Paper results are prospective evidence for this fixed research policy. They do
 not prove future profitability. Yahoo may revise adjusted history, costs remain
