@@ -74,21 +74,27 @@ def reconcile_signals(prepared, signal_events, reconciled_ids, source_hash, ledg
         signal_date = pd.Timestamp(signal["as_of"])
         if signal_date not in dates:
             raise ValueError(f"Saved signal date {signal_date.date()} is absent from the updated history.")
+        saved_policy = signal.get("policy", {})
+        horizon = signal.get("horizon_sessions", saved_policy.get("horizon", POLICY["horizon"]))
+        if (isinstance(horizon, bool) or not isinstance(horizon, int) or horizon < 1
+                or ("horizon" in saved_policy and saved_policy["horizon"] != horizon)):
+            raise ValueError("Saved signal has an invalid or inconsistent forecast horizon.")
         date_position = dates.get_loc(signal_date)
-        expiry_position = date_position + POLICY["horizon"] + 1
+        expiry_position = date_position + horizon + 1
         if expiry_position >= len(dates):
             continue
         expiry = dates[expiry_position]
         outcomes = []
         errors = {}
         for forecast in signal["forecasts"]:
-            key = (signal_date, forecast["ticker"])
-            row = prepared.loc[key]
-            if pd.isna(row[AVAILABLE]) or pd.Timestamp(row[AVAILABLE]) > latest:
-                raise ValueError("A signal was marked mature before its target was observable.")
-            actual = float(row[RETURN_TARGET])
+            ticker = forecast["ticker"]
+            entry_open = float(prepared.loc[(dates[date_position + 1], ticker), "Open"])
+            exit_open = float(prepared.loc[(expiry, ticker), "Open"])
+            if not np.isfinite([entry_open, exit_open]).all() or min(entry_open, exit_open) <= 0:
+                raise ValueError("A signal outcome needs finite, positive entry and exit opens.")
+            actual = exit_open / entry_open - 1.0
             expected = float(forecast["expected_return"])
-            outcomes.append({"candidate": forecast["candidate"], "ticker": forecast["ticker"],
+            outcomes.append({"candidate": forecast["candidate"], "ticker": ticker,
                              "expected_return": expected, "actual_return": actual})
             bucket = errors.setdefault(forecast["candidate"], [])
             bucket.append(actual - expected)
@@ -242,7 +248,8 @@ def main(argv=None):
         event = {"event": "paper_signal", "signal_id": signal_id,
                  "as_of": str(as_of.date()), "generated_at_utc": datetime.now(timezone.utc).isoformat(),
                  "execute": "next available session open", "horizon_sessions": POLICY["horizon"],
-                 "target_exit": "sixth subsequent session open", "tickers": tickers,
+                 "target_exit": f"open after {POLICY['horizon'] + 1} subsequent sessions",
+                 "tickers": tickers,
                  "sessions_since_prior_signal": elapsed_sessions if signals else None,
                  "source_hash": source_hash, "snapshot": str(snapshot),
                  "snapshot_hash": snapshot_hash, "code_fingerprint": model_hash,

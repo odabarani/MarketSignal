@@ -8,8 +8,9 @@ open. The five-session return target exits at the sixth subsequent open.
 The log compares the historical-mean, Ridge, and XGBoost forecasts with cash,
 SPY, equal-weight volatility sizing, and momentum. It preserves prior holdings,
 charges 15, 30, or 50 basis points per side in portfolio marks, and records
-realized forecast errors once the exit open is available. Paper equity marks
-remain invested and do not assume a terminal sale.
+realized forecast errors once the exit open is available. Reconciliation uses
+the horizon saved with each forecast, even if a later policy changes. Paper
+equity marks remain invested and do not assume a terminal sale.
 
 Each signal is append-only in `data/paper/signals.jsonl`; its compressed adjusted
 price snapshot is saved under `data/paper/snapshots/`. When a forecast matures,
