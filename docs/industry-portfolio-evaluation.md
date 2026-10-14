@@ -55,3 +55,27 @@ Daily factors: 2f29e22546069914890a712680a6f81f3680ebc3543b52864484d209ca13a7db
 Industry portfolios are not individual-stock predictions or a directly investable 49-fund portfolio. Portfolio-level basis-point costs do not measure trading inside the source portfolios, market impact, taxes, or a particular account's cash rate. The daily T-bill series is rounded to two decimal places in percentage units; this rounds some low daily rates to zero and understates cash returns in parts of 2015–2017. Historical industry assignments and returns may be revised when CRSP is updated. The [Fama/French library](https://mba.tuck.dartmouth.edu/pages/faculty/Ken.French/data_library.html) describes its reconstructed history and annual industry assignment.
 
 The result does not replace individual-stock research or forward paper tracking, and it is not a live-trading recommendation.
+
+## Development-only trend-filter check
+
+A fixed follow-up compared the selected 12-1 momentum strategy at a 5% volatility
+target with and without a 200-day market-trend filter. The filter moves the
+portfolio to cash when the lagged trend baseline is out of the market. It uses
+the same monthly schedule, two-session execution lag, and 15/30/50 bps cost
+stress. It was evaluated only on the already-used 1970–2014 development period.
+
+At 30 bps per side, the filter lowered annualized return from **9.67% to 8.48%**
+and left maximum drawdown unchanged at **-14.65%**. At 50 bps, return fell from
+**9.00% to 7.86%**. This candidate is rejected for now: it added no observed
+drawdown improvement and reduced return. The report also records each year's
+returns and lagged bull/bear regime results.
+
+Reproduce the fixed comparison after downloading the same public source files:
+
+```bash
+python industry_trend_filter_experiment.py
+```
+
+This is a development diagnostic, not a new holdout or evidence of future
+performance. Its output is saved as
+`data/industry_trend_filter_development.json`.
