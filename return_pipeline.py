@@ -62,11 +62,18 @@ def main(argv=None):
                 yearly.append({"candidate": name, "cost_bps_per_side": cost, "year": int(year),
                                "sessions": len(values), "net_return": float((1 + values).prod() - 1)})
         report["yearly"], report["config"] = yearly, config
-        report["limitations"] = ["Five survivor-selected technology stocks; no historical membership or delisted coverage.",
-                                  "Price returns exclude dividends, taxes, FX, and cash interest.",
+        universe = manifest.get("universe_type", "user-supplied assets")
+        if "ETF" in universe:
+            universe_limit = "ETF funds broaden sectors and assets, but do not reconstruct historical individual-stock membership."
+        else:
+            universe_limit = "The supplied assets do not reconstruct historical membership or delisted stocks."
+        price_limit = ("Adjusted prices model reinvested distributions; taxes, FX, and cash interest remain excluded."
+                       if "auto_adjust=True" in manifest.get("price_basis", "")
+                       else "Price returns may exclude dividends; taxes, FX, and cash interest are unmodelled.")
+        report["limitations"] = [universe_limit, price_limit,
                                   "Trailing volatility sizing is not a guarantee of future volatility or drawdown.",
                                   "Costs are assumptions; liquidity, market impact and execution capacity are not estimated.",
-                                  "All historical development periods have been inspected. No candidate is promoted live."]
+                                  "These are development results; no candidate is promoted live."]
         report["experiment"] = record_experiment(ledger, {**config, "stage": "return_complete"},
                          {"summary": report["summary"], "forecast_errors": report["forecast_errors"]}, panel,
                          notes="Fixed candidates; selection strictly precedes scoring; reused development data.")

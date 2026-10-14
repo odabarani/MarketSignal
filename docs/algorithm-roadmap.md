@@ -26,9 +26,12 @@ No candidate has earned a live-trading recommendation yet.
 2. **Better target:** compare predictions of absolute return and downside with
    the existing direction/relative classes. Correctly predicting “beats SPY”
    does not imply making money when the market falls.
-3. **Broader evidence:** test across sectors, time periods, and separate assets.
-   Obtain dividend/corporate-action data and historical universe membership,
-   including delisted stocks. A list of today's winners is inadequate evidence.
+3. **Broader evidence:** first compare dividend-adjusted sector, broad-market,
+   international, and defensive ETFs from one complete session panel. The
+   `prepare_return_snapshot.py` command freezes that source and marks a later
+   period for one locked evaluation. ETF breadth does not replace historical
+   individual-stock membership or delisted coverage. The first [ETF holdout
+   result](etf-locked-evaluation.md) still favors SPY for return.
 4. **Small model competition:** start with regularized linear models, shallow
    boosted trees, and simple rules. Use nested chronological selection; reserve
    later windows for scoring the complete frozen model and portfolio policy.

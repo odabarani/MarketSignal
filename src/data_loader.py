@@ -11,8 +11,9 @@ def _clean_columns(df):
         df.index = df.index.tz_localize(None)
     return df
 
-def _download_close(ticker):
-    data = yf.download(ticker, start=START, end=date.today(), progress=False, auto_adjust=False)
+def _download_close(ticker, auto_adjust=False):
+    data = yf.download(ticker, start=START, end=date.today(), progress=False,
+                       auto_adjust=auto_adjust)
     data = _clean_columns(data)
     if data.empty or "Close" not in data:
         raise ValueError(f"No price data was returned for {ticker}.")
@@ -54,4 +55,49 @@ def get_market_data(tickers):
         if frame.empty:
             raise ValueError(f"No aligned market data was returned for {symbol}.")
         result[symbol] = frame
+    return result
+
+
+def get_research_market_data(tickers):
+    """Download a complete, dividend-adjusted panel for offline research.
+
+    Prices are aligned to the SPY trading calendar. The returned interval starts
+    only once every requested asset has begun trading; missing bars inside
+    that common interval raise an error instead of silently changing the sample.
+    The public app keeps using the unadjusted loader above.
+    """
+    symbols = list(dict.fromkeys(str(ticker).strip().upper() for ticker in tickers))
+    if not symbols or any(not symbol for symbol in symbols):
+        raise ValueError("Provide at least one valid research ticker.")
+    if "__SPY__" in symbols:
+        raise ValueError("Ticker __SPY__ is reserved for the benchmark.")
+
+    benchmark = _download_close("SPY", auto_adjust=True)
+    volatility = _download_close("^VIX")["Close"].rename("VIX")
+    assets = {symbol: _download_close(symbol, auto_adjust=True) for symbol in symbols}
+    valid_ranges = {}
+    for symbol, frame in assets.items():
+        valid = frame.dropna(subset=["Open", "High", "Low", "Close", "Volume"])
+        if valid.empty:
+            raise ValueError(f"No complete adjusted price history was returned for {symbol}.")
+        valid_ranges[symbol] = (valid.index.min(), valid.index.max())
+    common_start = max(start for start, _ in valid_ranges.values())
+    common_end = min(end for _, end in valid_ranges.values())
+    calendar = benchmark.index[(benchmark.index >= common_start) & (benchmark.index <= common_end)]
+    if calendar.empty:
+        raise ValueError("The requested assets have no common history with SPY.")
+    base = benchmark.reindex(calendar)
+    base["VIX"] = volatility.reindex(calendar)
+    base["SPY_Open"] = base["Open"]
+    base["SPY_Close"] = base["Close"]
+    if not base[["SPY_Open", "SPY_Close", "VIX"]].notna().all().all():
+        raise ValueError("SPY or VIX has missing observations in the common research interval.")
+
+    result = {}
+    for symbol, frame in assets.items():
+        aligned = frame.reindex(calendar)
+        if not aligned[["Open", "High", "Low", "Close", "Volume"]].notna().all().all():
+            raise ValueError(f"{symbol} has missing sessions inside the common research interval.")
+        aligned = aligned.join(base[["SPY_Open", "SPY_Close", "VIX"]])
+        result[symbol] = aligned
     return result

@@ -62,6 +62,29 @@ Every comparison is logged locally with features, settings, and code/data hashes
 Keep that ledger. An already viewed test period is no longer untouched.
 See [research results](docs/research-results.md) for the latest validation findings.
 
+For a wider sector and asset comparison, freeze dividend-adjusted ETF data and
+set a development cutoff:
+
+```bash
+python prepare_return_snapshot.py --development-end 2024-05-23
+```
+
+This saves a 19-ETF panel and reserves later dates for a locked evaluation.
+Keep the CSV and manifest together; Yahoo Finance may revise adjusted history.
+The ETF sample does not replace historical individual-stock coverage.
+
+Run the fixed development comparison, then score its selected strategy on the
+reserved dates once:
+
+```bash
+python return_pipeline.py --input data/sector_etf_panel.csv --output data/sector_etf_competition.json
+python locked_return_test.py --input data/sector_etf_panel.csv --development-report data/sector_etf_competition.json
+```
+
+The second command refuses to overwrite its results. It compares the frozen
+choice with the same simple and learned candidates at three cost levels.
+See the [ETF holdout result](docs/etf-locked-evaluation.md).
+
 ## Research Lab
 
 Open **Research Lab** from the app for interactive performance and confidence charts.
