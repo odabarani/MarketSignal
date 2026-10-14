@@ -42,3 +42,24 @@ recreate the exact result. The ETF set does not test historical individual-stock
 membership. Fixed basis-point costs omit liquidity, market impact, taxes, cash
 interest, and FX. More unseen periods and prospective paper tracking are still
 needed before making profitability claims.
+
+## Post-hoc uncertainty check
+
+After inspecting this holdout, a paired circular moving-block bootstrap was run
+on its 598 daily equity changes (20-session blocks, 20,000 resamples, fixed
+seed). The selected strategy's annualized relative growth versus SPY was -6.6%;
+the 95% resampling interval was -16.1% to +3.6%. Only 9.9% of resampled paths
+had positive relative growth. The observed maximum-drawdown gap was +8.0
+percentage points in the strategy's favor; its 95% interval was -0.7 to +11.3
+points, with lower strategy drawdown in 95.7% of resampled paths.
+
+These are descriptive ranges conditional on this one observed period. They are
+not a significance test, do not correct for strategy selection, and do not make
+this a fresh holdout. Reproduce the calculation from the saved equity file:
+
+```bash
+python holdout_uncertainty.py
+```
+
+The report records the equity file hash, bootstrap settings, and both comparison
+statistics in `data/sector_etf_holdout_uncertainty.json`.
