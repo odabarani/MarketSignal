@@ -85,6 +85,15 @@ The second command refuses to overwrite its results. It compares the frozen
 choice with the same simple and learned candidates at three cost levels.
 See the [ETF holdout result](docs/etf-locked-evaluation.md).
 
+For forward-only **paper tracking**, run after the US market closes:
+
+```bash
+python paper_signal.py
+```
+
+It saves a forecast and exact data snapshot, then records realized results when
+they mature. It does not place trades. See [paper tracking](docs/paper-tracking.md).
+
 ## Research Lab
 
 Open **Research Lab** from the app for interactive performance and confidence charts.

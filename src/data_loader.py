@@ -1,6 +1,7 @@
 import yfinance as yf
 import pandas as pd
-from datetime import date
+from datetime import date, datetime, time, timedelta
+from zoneinfo import ZoneInfo
 
 START = "2015-01-01"
 
@@ -11,8 +12,8 @@ def _clean_columns(df):
         df.index = df.index.tz_localize(None)
     return df
 
-def _download_close(ticker, auto_adjust=False):
-    data = yf.download(ticker, start=START, end=date.today(), progress=False,
+def _download_close(ticker, auto_adjust=False, end=None):
+    data = yf.download(ticker, start=START, end=end or date.today(), progress=False,
                        auto_adjust=auto_adjust)
     data = _clean_columns(data)
     if data.empty or "Close" not in data:
@@ -58,7 +59,7 @@ def get_market_data(tickers):
     return result
 
 
-def get_research_market_data(tickers):
+def get_research_market_data(tickers, end=None):
     """Download a complete, dividend-adjusted panel for offline research.
 
     Prices are aligned to the SPY trading calendar. The returned interval starts
@@ -72,9 +73,14 @@ def get_research_market_data(tickers):
     if "__SPY__" in symbols:
         raise ValueError("Ticker __SPY__ is reserved for the benchmark.")
 
-    benchmark = _download_close("SPY", auto_adjust=True)
-    volatility = _download_close("^VIX")["Close"].rename("VIX")
-    assets = {symbol: _download_close(symbol, auto_adjust=True) for symbol in symbols}
+    if end is None:
+        # Yahoo's end date is exclusive. Include today's daily candle only
+        # after a conservative buffer past the US cash-market close.
+        eastern = datetime.now(ZoneInfo("America/New_York"))
+        end = eastern.date() + timedelta(days=1) if eastern.time() >= time(16, 15) else eastern.date()
+    benchmark = _download_close("SPY", auto_adjust=True, end=end)
+    volatility = _download_close("^VIX", end=end)["Close"].rename("VIX")
+    assets = {symbol: _download_close(symbol, auto_adjust=True, end=end) for symbol in symbols}
     valid_ranges = {}
     for symbol, frame in assets.items():
         valid = frame.dropna(subset=["Open", "High", "Low", "Close", "Volume"])

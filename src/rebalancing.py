@@ -16,14 +16,15 @@ class RebalanceResult:
     metrics: dict
 
 
-def rebalance_backtest(panel, weights, liquidation_date, cost_bps=15, starting_capital=10000):
-    """Trade only weight differences; sell the final position at a specified open.
+def rebalance_backtest(panel, weights, liquidation_date=None, cost_bps=15, starting_capital=10000):
+    """Trade only weight differences; optionally mark the final holdings to close.
 
     A close-time target executes at the following session's open. Target weights
     apply to NAV after fees. Bisection solves the self-financing fee equation;
-    sales fund purchases and no borrowing is permitted. Daily marks use closes,
-    except the final open-time liquidation. Splits/dividends must be handled by
-    the price source; this engine does not reconstruct corporate actions.
+    sales fund purchases and no borrowing is permitted. Daily marks use closes.
+    Set ``liquidation_date`` to sell at that open; leave it as ``None`` to mark
+    an open paper portfolio without an assumed terminal sale. Splits/dividends
+    must be handled by the price source; this engine does not reconstruct them.
     """
     if not np.isfinite(cost_bps) or not 0 <= cost_bps < 10000:
         raise ValueError("Per-side costs must be finite in [0, 10000) bps.")
@@ -42,9 +43,14 @@ def rebalance_backtest(panel, weights, liquidation_date, cost_bps=15, starting_c
     if not set(symbols).issubset(opens.columns):
         raise ValueError("Unknown allocation symbol.")
     positions = opens.index.get_indexer(weights.index)
-    final = opens.index.get_indexer([pd.Timestamp(liquidation_date)])[0]
-    if (positions < 0).any() or final <= positions[-1] + 1:
-        raise ValueError("All decisions need an execution open before final liquidation.")
+    if liquidation_date is None:
+        final = len(opens.index) - 1
+        if (positions < 0).any() or positions[-1] + 1 > final:
+            raise ValueError("All decisions need an execution open in the marked period.")
+    else:
+        final = opens.index.get_indexer([pd.Timestamp(liquidation_date)])[0]
+        if (positions < 0).any() or final <= positions[-1] + 1:
+            raise ValueError("All decisions need an execution open before final liquidation.")
     opens, closes = opens.reindex(columns=symbols), closes.reindex(columns=symbols)
     first = positions[0]
     execution = dict(zip(positions + 1, weights.to_numpy()))
@@ -57,7 +63,7 @@ def rebalance_backtest(panel, weights, liquidation_date, cost_bps=15, starting_c
         old_shares = shares.copy()
         active = old_shares > 0
         target = execution.get(position)
-        if position == final:
+        if liquidation_date is not None and position == final:
             target = np.zeros(len(symbols))
         if target is not None:
             active |= target > 0
@@ -93,7 +99,7 @@ def rebalance_backtest(panel, weights, liquidation_date, cost_bps=15, starting_c
                                 "quantity": float(abs(changes[i])), "reference_open": float(price[i]),
                                 "notional": float(abs(notional[i])), "fee": float(fees[i]),
                                 "cash_after_rebalance": cash})
-        if position == final:
+        if liquidation_date is not None and position == final:
             nav = cash
         else:
             active = shares > 0

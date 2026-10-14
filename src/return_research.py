@@ -114,7 +114,8 @@ def prepare_return_panel(panel, development_end, horizon=5):
     return panel
 
 
-def allocation_rules(panel, forecasts, decisions, selected=None, policy=None):
+def allocation_rules(panel, forecasts, decisions, selected=None, policy=None,
+                     initial_holdings=None):
     """Create observable allocations; thresholds are fixed before scoring returns.
 
     A positive retained forecast can keep a position below the new-entry hurdle.
@@ -135,7 +136,12 @@ def allocation_rules(panel, forecasts, decisions, selected=None, policy=None):
         raise ValueError("Duplicate return forecasts.")
     if not np.isfinite(forecasts.expected_return).all():
         raise ValueError("Return forecasts must be finite.")
-    previous = {name: set() for name in names}
+    initial_holdings = {} if initial_holdings is None else initial_holdings
+    if set(initial_holdings).difference(names):
+        raise ValueError("Initial positions contain an unknown candidate.")
+    previous = {name: set(initial_holdings.get(name, ())) for name in names}
+    if any(holdings.difference(symbols) for holdings in previous.values()):
+        raise ValueError("Initial positions contain an unknown asset.")
     hurdle = 2 * policy["base_cost_bps"] / 10000 + policy["minimum_edge"]
     for date in decisions:
         observed = panel.loc[date].reindex(symbols)
