@@ -1,6 +1,7 @@
 import json
 from hashlib import sha256
 from pathlib import Path
+from datetime import datetime as RealDateTime
 
 import pandas as pd
 import pytest
@@ -165,3 +166,36 @@ def test_paper_signal_reports_public_data_failure_without_writing_a_signal(
     assert error.value.code == 2
     assert "Could not load complete public price data" in capsys.readouterr().err
     assert not ledger.exists()
+
+
+def test_late_or_stale_latest_session_does_not_create_a_backdated_signal(
+        tmp_path, monkeypatch, capsys):
+    import paper_signal
+
+    class FixedDateTime(RealDateTime):
+        @classmethod
+        def now(cls, tz=None):
+            current = RealDateTime(2026, 10, 14, 21, 5)
+            return current.replace(tzinfo=tz)
+
+    monkeypatch.setattr(paper_signal, "datetime", FixedDateTime)
+    stale_date = pd.Timestamp("2026-10-13")
+    frame = pd.DataFrame({
+        "Open": [100.0], "High": [101.0], "Low": [99.0], "Close": [100.0],
+        "Volume": [1000.0], "VIX": [20.0], "SPY_Open": [500.0], "SPY_Close": [501.0],
+    }, index=pd.DatetimeIndex([stale_date], name="Date"))
+    monkeypatch.setattr(paper_signal, "get_research_market_data", lambda _tickers: {"AAA": frame})
+    monkeypatch.setattr(paper_signal, "prepare_return_panel", lambda panel, *_args: panel)
+    root = Path(__file__).resolve().parents[1]
+    ledger = tmp_path / "stock-paper" / "signals.jsonl"
+    snapshots = tmp_path / "snapshots"
+
+    main(["--universe-file", str(root / "configs/paper-stock-universe-v1.json"),
+          "--ledger", str(ledger), "--snapshot-dir", str(snapshots),
+          "--reconciliation-snapshot-dir", str(tmp_path / "reconciliations")])
+
+    output = capsys.readouterr().out
+    assert "Latest complete session: 2026-10-13" in output
+    assert "wait until after the latest session close" in output
+    assert not ledger.exists()
+    assert not snapshots.exists()
