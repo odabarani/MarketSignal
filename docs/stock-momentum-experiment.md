@@ -32,8 +32,10 @@ market-impact estimate; intraday volume patterns remain unmodeled.
 
 Signals are formed at month-end close and traded at the next session's close.
 Performance includes 15, 30, and 50 basis points per side, net compounded
-returns, Sharpe ratio, maximum drawdown, turnover, calendar-year returns, and
-returns above and below SPY's 200-day average. The report also runs two
+returns, Sharpe ratio above the daily Fama/French `RF` factor, maximum drawdown,
+turnover, calendar-year returns, and returns above and below SPY's 200-day
+average. Uninvested capital earns the daily `RF` factor as a Treasury-bill
+proxy; actual brokerage cash rates can differ. The report also runs two
 delisting cases: zero recovery after the last observed price as a conservative
 stress, and carrying the last quote as an optimistic assumption. Neither is an
 observed payout, and the last quote is not an upper bound on merger proceeds;
@@ -57,6 +59,6 @@ This is a historical development comparison, not a hidden test. The five-year
 sample has already been examined at the broader market level, so its results
 cannot satisfy the goal of genuinely unseen validation. It also uses a current
 security-type snapshot, close-price execution, and fixed cost estimates; market
-impact, taxes, cash yield, and trade capacity are not fully modeled. Do not
+impact, taxes, and exact account cash rates are not fully modeled. Do not
 promote or describe any rule as profitable from this report. Preserve each run
 under a new filename rather than overwriting an earlier result.
