@@ -29,6 +29,11 @@ delisting cases: zero recovery after the last observed price as a conservative
 stress, and carrying the last quote as an optimistic assumption. Neither is an
 observed payout, and the last quote is not an upper bound on merger proceeds;
 the spread between scenarios shows how much missing recovery data matters.
+For each strategy, the report also gives a paired 20-session block-bootstrap
+range for compounded excess return versus SPY. It keeps strategy and benchmark
+days together and resamples contiguous blocks, but it only describes possible
+paths through this same historical sample. It is not a forecast or an
+unseen-test result.
 
 Each result also shows excess net return and excess drawdown versus SPY on the
 same dates, plus whether it stayed within the project's provisional 20%
