@@ -68,6 +68,9 @@ def test_learning_sample_coverage_rejects_missing_year_and_partial_year():
     partial_year = panel.loc[~((panel.date.dt.year == 2008) & (panel.date.dt.month > 6))]
     with pytest.raises(ValueError, match="Incomplete benchmark coverage for 2008"):
         validate_learning_sample_coverage(partial_year, "SPY-SID")
+    sparse_year = panel.loc[~((panel.date.dt.year == 2010) & (panel.date.dt.month.isin([3, 4])))]
+    with pytest.raises(ValueError, match="Incomplete benchmark coverage for 2010"):
+        validate_learning_sample_coverage(sparse_year, "SPY-SID")
 
 
 def test_quantrocket_wide_prices_become_tidy_sid_date_panel():
