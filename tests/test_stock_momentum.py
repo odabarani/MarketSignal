@@ -12,6 +12,7 @@ from src.stock_momentum import (
     volatility_exposure,
     block_bootstrap_excess_return,
     simulate_with_sector_attribution,
+    target_entry_capacity,
 )
 
 
@@ -56,7 +57,7 @@ def test_monthly_targets_use_only_point_in_time_close_and_liquid_history():
         "STOCK-A": np.linspace(10, 30, len(dates)),
         "STOCK-B": np.linspace(20, 19, len(dates)),
     }, index=dates)
-    liquidity = monthly_liquidity(dates, ["STOCK-A", "STOCK-B"])
+    liquidity = monthly_liquidity(dates, ["SPY-SID", "STOCK-A", "STOCK-B"])
     targets, regime, start = build_targets(
         close, ["STOCK-A", "STOCK-B"], "SPY-SID", liquidity
     )
@@ -155,6 +156,28 @@ def test_block_bootstrap_rejects_misaligned_or_incomplete_daily_returns():
         block_bootstrap_excess_return(benchmark, incomplete)
 
 
+def test_target_entry_capacity_uses_signal_date_adv_and_target_weight():
+    dates = pd.bdate_range("2007-01-02", periods=3)
+    close = pd.DataFrame({"A": [10.0, 11.0, 12.0]}, index=dates)
+    liquidity = pd.DataFrame([
+        {"sid": "A", "date": dates[1], "average_adjusted_dollar_volume": 100_000.0},
+        {"sid": "B", "date": dates[1], "average_adjusted_dollar_volume": 1_000_000.0},
+    ])
+    report = target_entry_capacity(
+        close,
+        {"test": {dates[2]: {"A": 0.5, "B": 0.5}}},
+        liquidity,
+    )["test"]["participation_scenarios"]
+    assert report["1.000%"]["minimum_portfolio_size_proxy"] == pytest.approx(2_000.0)
+    assert report["0.500%"]["minimum_portfolio_size_proxy"] == pytest.approx(1_000.0)
+    with pytest.raises(ValueError, match="liquidity is missing"):
+        target_entry_capacity(
+            close,
+            {"test": {dates[2]: {"A": 0.5, "B": 0.5}}},
+            liquidity.iloc[[0]],
+        )
+
+
 def test_volatility_sizing_is_capped_and_requires_a_nonzero_history():
     low_vol = pd.Series(np.tile([-0.002, 0.002], 10))
     assert volatility_exposure(low_vol) == 1.0
@@ -186,7 +209,7 @@ def test_full_experiment_is_serializable_and_compares_all_fixed_baselines():
         ]
     ], ignore_index=True)
     metadata = metadata_rows()
-    liquidity = monthly_liquidity(dates, ["STOCK-A", "STOCK-B"])
+    liquidity = monthly_liquidity(dates, ["SPY-SID", "STOCK-A", "STOCK-B"])
     report = run_experiment(panel, metadata, liquidity, cost_bps=(30,))
     assert report["phase"] == "historical_development_only"
     assert len(report["results"]) == 12
@@ -199,6 +222,10 @@ def test_full_experiment_is_serializable_and_compares_all_fixed_baselines():
     assert all("within_research_drawdown_budget" in row for row in report["results"])
     assert all("block_bootstrap_excess_net_return_vs_spy" in row for row in report["results"])
     assert all("sector_net_pnl_contribution_on_initial_equity" in row for row in report["results"])
+    assert "target_entry_capacity_screen" in report
+    assert "not a market-impact or fill model" in " ".join(
+        report["target_entry_capacity_screen"]["limitations"]
+    )
     for row in report["results"]:
         sector_contribution = sum(row["sector_net_pnl_contribution_on_initial_equity"].values())
         assert sector_contribution == pytest.approx(row["net_return"])
