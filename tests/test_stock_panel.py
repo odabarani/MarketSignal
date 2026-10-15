@@ -13,6 +13,7 @@ from export_quantrocket_stock_sample import (
 from src.stock_panel import (
     load_stock_panel,
     validate_liquidity_panel,
+    validate_learning_sample_coverage,
     validate_security_metadata,
     validate_stock_panel,
 )
@@ -54,6 +55,19 @@ def test_load_panel_records_hash_and_dimensions(tmp_path):
     assert metadata["sha256"]
     assert metadata["securities"] == 2
     assert metadata["first_date"] == "2007-01-03"
+
+
+def test_learning_sample_coverage_rejects_missing_year_and_partial_year():
+    dates = pd.bdate_range("2007-01-01", "2011-12-31")
+    panel = pd.DataFrame({"sid": "SPY-SID", "date": dates})
+    coverage = validate_learning_sample_coverage(panel, "SPY-SID")
+    assert set(coverage["by_year"]) == {"2007", "2008", "2009", "2010", "2011"}
+    missing_year = panel.loc[panel.date.dt.year.ne(2009)]
+    with pytest.raises(ValueError, match="Incomplete benchmark coverage for 2009"):
+        validate_learning_sample_coverage(missing_year, "SPY-SID")
+    partial_year = panel.loc[~((panel.date.dt.year == 2008) & (panel.date.dt.month > 6))]
+    with pytest.raises(ValueError, match="Incomplete benchmark coverage for 2008"):
+        validate_learning_sample_coverage(partial_year, "SPY-SID")
 
 
 def test_quantrocket_wide_prices_become_tidy_sid_date_panel():
