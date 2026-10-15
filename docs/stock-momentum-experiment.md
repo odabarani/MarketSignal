@@ -25,10 +25,10 @@ ends on its signal date. Eligible securities are Common Stock or Depositary
 Receipts according to the latest QuantRocket master snapshot. This static type
 label can be revised and is not a point-in-time classification.
 The report also screens the implied portfolio size at 0.5%, 1%, and 2% of this
-proxy for target entry orders. It uses the prior signal-date proxy and portfolio
-weights, and reports the weakest rebalance as well as the median. This is a
-capacity warning, not a fill or market-impact estimate; it omits sell orders
-and intraday volume patterns.
+proxy for actual rebalance orders. It accounts for portfolio weight drift and
+checks both buys and sells using the signal-date proxy. It reports the weakest
+rebalance as well as the median. This is a capacity warning, not a fill or
+market-impact estimate; intraday volume patterns remain unmodeled.
 
 Signals are formed at month-end close and traded at the next session's close.
 Performance includes 15, 30, and 50 basis points per side, net compounded
