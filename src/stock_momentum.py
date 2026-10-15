@@ -160,11 +160,13 @@ def target_order_capacity(
     returns: pd.DataFrame,
     targets: dict[str, dict[pd.Timestamp, dict[str, float]]],
     liquidity_panel: pd.DataFrame,
+    cash_returns: pd.Series | None = None,
 ) -> dict[str, dict[str, Any]]:
     """Screen rebalance capacity from drifted weights and buys as well as sells."""
     liquidity = validate_liquidity_panel(liquidity_panel).pivot(
         index="date", columns="sid", values="average_adjusted_dollar_volume"
     )
+    cash_returns = _aligned_cash_returns(returns.index, cash_returns)
     dates = returns.index
     report: dict[str, dict[str, Any]] = {}
     for strategy, schedule in targets.items():
@@ -172,10 +174,11 @@ def target_order_capacity(
         risky_weights: dict[str, float] = {}
         solvent = True
         for execution_date, asset_returns in returns.iterrows():
+            cash_weight = max(0.0, 1.0 - sum(risky_weights.values()))
             portfolio_return = sum(
                 weight * float(asset_returns.get(sid, 0.0))
                 for sid, weight in risky_weights.items()
-            )
+            ) + cash_weight * float(cash_returns.loc[execution_date])
             if portfolio_return <= -1.0:
                 risky_weights = {}
                 solvent = False
@@ -262,15 +265,31 @@ def daily_returns(
     return returns
 
 
+def _aligned_cash_returns(
+    dates: pd.Index, cash_returns: pd.Series | None
+) -> pd.Series:
+    """Return a finite daily cash series aligned to every portfolio session."""
+    if cash_returns is None:
+        return pd.Series(0.0, index=dates, name="risk_free_return")
+    if cash_returns.index.has_duplicates:
+        raise ValueError("Cash return series contains duplicate dates.")
+    aligned = pd.to_numeric(cash_returns, errors="coerce").reindex(dates)
+    values = aligned.to_numpy(dtype=float)
+    if not np.isfinite(values).all() or (values <= -1).any():
+        raise ValueError("Cash returns must be available, finite, and greater than -100% for every session.")
+    return aligned.astype(float).rename("risk_free_return")
+
+
 def simulate(
     returns: pd.DataFrame,
     targets: dict[pd.Timestamp, dict[str, float]],
     cost_bps: int,
     start: pd.Timestamp,
+    cash_returns: pd.Series | None = None,
 ) -> tuple[pd.Series, pd.Series, float]:
     """Apply close trades after today's return; charge costs on risky traded notional."""
     equity, net_returns, annual_turnover, _ = _simulate_with_attribution(
-        returns, targets, cost_bps, start, None
+        returns, targets, cost_bps, start, None, cash_returns
     )
     return equity, net_returns, annual_turnover
 
@@ -281,9 +300,12 @@ def simulate_with_sector_attribution(
     cost_bps: int,
     start: pd.Timestamp,
     sector_by_sid: dict[str, str],
+    cash_returns: pd.Series | None = None,
 ) -> tuple[pd.Series, pd.Series, float, pd.DataFrame]:
     """Simulate the same strategy and attribute daily net P&L to sectors."""
-    return _simulate_with_attribution(returns, targets, cost_bps, start, sector_by_sid)
+    return _simulate_with_attribution(
+        returns, targets, cost_bps, start, sector_by_sid, cash_returns
+    )
 
 
 def _simulate_with_attribution(
@@ -292,10 +314,12 @@ def _simulate_with_attribution(
     cost_bps: int,
     start: pd.Timestamp,
     sector_by_sid: dict[str, str] | None,
+    cash_returns: pd.Series | None = None,
 ) -> tuple[pd.Series, pd.Series, float, pd.DataFrame]:
     """Shared portfolio engine; attribution is additive net P&L per initial equity."""
     if cost_bps < 0:
         raise ValueError("Cost must be nonnegative.")
+    cash_returns = _aligned_cash_returns(returns.index, cash_returns)
     fee_rate = cost_bps / 10_000.0
     risky_weights: dict[str, float] = {}
     equity = 1.0
@@ -307,29 +331,32 @@ def _simulate_with_attribution(
         prior_equity = equity
         asset_returns = row
         daily_sector_pnl: dict[str, float] = {}
+        cash_weight = max(0.0, 1.0 - sum(risky_weights.values()))
+        daily_cash_return = float(cash_returns.loc[date])
         if sector_by_sid is not None:
             for sid, weight in risky_weights.items():
                 sector = sector_by_sid.get(sid, "Unknown")
                 daily_sector_pnl[sector] = daily_sector_pnl.get(sector, 0.0) + (
                     prior_equity * weight * float(asset_returns.get(sid, 0.0))
                 )
+            if cash_weight > 0:
+                daily_sector_pnl["Cash yield"] = prior_equity * cash_weight * daily_cash_return
         portfolio_return = sum(
             weight * float(asset_returns.get(sid, 0.0))
             for sid, weight in risky_weights.items()
-        )
+        ) + cash_weight * daily_cash_return
         if portfolio_return <= -1.0:
             equity = 0.0
             risky_weights = {}
         else:
             equity *= 1.0 + portfolio_return
-            cash_weight = max(0.0, 1.0 - sum(risky_weights.values()))
             denominator = 1.0 + portfolio_return
             risky_weights = {
                 sid: weight * (1.0 + float(asset_returns.get(sid, 0.0))) / denominator
                 for sid, weight in risky_weights.items()
                 if weight > 0 and (1.0 + float(asset_returns.get(sid, 0.0))) > 0
             }
-            cash_weight = cash_weight / denominator
+            cash_weight = cash_weight * (1.0 + daily_cash_return) / denominator
             total_weight = sum(risky_weights.values()) + cash_weight
             if total_weight > 0 and not np.isclose(total_weight, 1.0):
                 risky_weights = {sid: weight / total_weight for sid, weight in risky_weights.items()}
@@ -379,20 +406,30 @@ def summarize(
     returns: pd.Series,
     regime: pd.Series,
     start: pd.Timestamp,
+    cash_returns: pd.Series | None = None,
 ) -> dict[str, Any]:
     """Return comparable net performance, drawdown, turnover, yearly and regime slices."""
-    returns = returns.loc[start:]
-    equity = equity.loc[start:]
-    if returns.empty:
+    cash_returns = _aligned_cash_returns(returns.index, cash_returns)
+    evaluation_returns = returns.loc[start:]
+    if evaluation_returns.empty:
         raise ValueError("Evaluation period is empty.")
-    previous_equity = equity.shift(1).loc[returns.index[0]]
+    evaluation_start = evaluation_returns.index[0]
+    previous_equity = equity.shift(1).loc[evaluation_start]
     starting_value = float(previous_equity) if pd.notna(previous_equity) else 1.0
+    returns = evaluation_returns
+    cash_returns = cash_returns.loc[returns.index]
+    equity = equity.loc[returns.index]
     ending_value = float(equity.iloc[-1])
     years = max(len(returns) / 252.0, 1 / 252.0)
     peak = equity.cummax().clip(lower=starting_value)
     drawdown = equity / peak - 1.0
     volatility = float(returns.std(ddof=1) * np.sqrt(252)) if len(returns) > 1 else 0.0
     sharpe = float(returns.mean() / returns.std(ddof=1) * np.sqrt(252)) if returns.std(ddof=1) > 0 else 0.0
+    excess_returns = returns - cash_returns
+    excess_sharpe = (
+        float(excess_returns.mean() / returns.std(ddof=1) * np.sqrt(252))
+        if len(returns) > 1 and returns.std(ddof=1) > 0 else 0.0
+    )
     yearly = {
         str(int(year)): float((1.0 + values).prod() - 1.0)
         for year, values in returns.groupby(returns.index.year)
@@ -415,6 +452,7 @@ def summarize(
         "max_drawdown": float(drawdown.min()),
         "annualized_volatility": volatility,
         "sharpe_zero_rf": sharpe,
+        "sharpe_excess_rf": excess_sharpe,
         "yearly_net_returns": yearly,
         "market_regime_net_returns": regimes,
     }
@@ -483,9 +521,15 @@ def run_experiment(
     metadata: pd.DataFrame,
     liquidity_panel: pd.DataFrame,
     cost_bps: tuple[int, ...] = COSTS_BPS,
+    cash_returns: pd.Series | None = None,
 ) -> dict[str, Any]:
     """Compare simple stock momentum with cash, SPY, and equal-weight stocks."""
+    cash_return_source = (
+        "daily Fama/French RF factor (T-bill proxy)"
+        if cash_returns is not None else "zero-return cash assumption"
+    )
     close, spy_sid, stock_sids = make_price_matrices(panel, metadata)
+    cash_returns = _aligned_cash_returns(close.index, cash_returns)
     targets, regime, start = build_targets(close, stock_sids, spy_sid, liquidity_panel)
     sector_by_sid = metadata.set_index(metadata["sid"].astype(str))["sector"].fillna("Unknown").to_dict()
     sector_by_sid = {
@@ -498,15 +542,17 @@ def run_experiment(
     for scenario in ("zero_recovery", "last_quote"):
         returns = daily_returns(close, metadata, scenario)
         capacity_by_scenario[scenario] = target_order_capacity(
-            returns, targets, liquidity_panel
+            returns, targets, liquidity_panel, cash_returns
         )
         for strategy in STRATEGIES:
             for cost in cost_bps:
                 equity, net_returns, annual_turnover, sector_pnl = simulate_with_sector_attribution(
-                    returns, targets[strategy], cost, start, sector_by_sid
+                    returns, targets[strategy], cost, start, sector_by_sid, cash_returns
                 )
                 daily_results[(strategy, cost, scenario)] = net_returns.loc[start:]
-                sector_pnl = sector_pnl.loc[start:]
+                initial_equity = equity.shift(1).loc[start]
+                initial_equity = float(initial_equity) if pd.notna(initial_equity) else 1.0
+                sector_pnl = sector_pnl.loc[start:] / initial_equity
                 sector_by_year = {
                     str(int(year)): {
                         str(sector): float(value)
@@ -524,7 +570,7 @@ def run_experiment(
                         for sector, value in sector_pnl.sum().items()
                     },
                     "sector_net_pnl_by_year_on_initial_equity": sector_by_year,
-                    **summarize(equity, net_returns, regime, start),
+                    **summarize(equity, net_returns, regime, start, cash_returns),
                 })
     spy_results = {
         (row["cost_bps_per_side"], row["delisting_scenario"]): row
@@ -560,6 +606,7 @@ def run_experiment(
             "rebalancing": "Monthly signal at close, trade at next session close.",
             "universe": "Common Stock and Depositary Receipt per latest master snapshot; no active-only filter.",
             "execution_costs_bps_per_side": list(cost_bps),
+            "cash_return_source": cash_return_source,
             "excess_return_uncertainty": (
                 "Paired circular block bootstrap of daily net returns, using 20-session "
                 "blocks, 1,000 resamples, and a fixed seed. Its interval describes "
@@ -585,7 +632,8 @@ def run_experiment(
             "The current securities-master snapshot classifies security types and delisting events; it is not point-in-time classification data.",
             "Sector P&L attribution uses current master labels and is descriptive; historical sector classifications are not available in this sample.",
             "Zero recovery after the last price is a conservative stress, not an observed payout; last-quote carry is an optimistic assumption, not an upper bound on merger consideration.",
-            "Fixed costs omit market impact, taxes, cash yield, and capacity constraints beyond an adjusted-dollar-volume proxy screen.",
+            "Fixed costs omit market impact, taxes, and capacity constraints beyond an adjusted-dollar-volume proxy screen.",
+            "Fama/French RF is a Treasury-bill cash proxy; actual account cash rates may differ.",
             "Adjusted close-to-close prices approximate total returns and assume trades can execute at the close before costs.",
         ],
         "results": results,
