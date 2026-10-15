@@ -30,12 +30,14 @@ No candidate has earned a live-trading recommendation yet.
   volatility-sized ETF strategy, while its relative-return range still includes
   underperformance and outperformance. The [industry test](industry-portfolio-evaluation.md)
   also underperformed the market and overlaps previously inspected dates.
-- **Public-data limit:** available free stock-price panels have material gaps in
-  delisted histories. Do not describe those results as survivorship-bias-free.
-  [CRSP documents active and inactive security coverage](https://www.crsp.org/research/crsp-us-stock-databases/),
-  while a [public S&P 500 price panel](https://github.com/Johnbrick123/sp500-data)
-  reports substantial gaps for delisted members. The current historical
-  comparisons therefore use public ETF and reconstructed industry portfolios.
+- **Public-data limit:** a free QuantRocket account offers all-stock daily prices
+  for 2007–2011, including securities that later delisted. The repository now
+  has an exporter and strict panel checks for this sample, but no sample has
+  been downloaded or tested here yet. The export also lacks delisting cash or
+  stock consideration, so a missing later price cannot safely be treated as a
+  complete delisting return. Until that limitation is resolved, historical
+  stock results must be labeled incomplete. See
+  [the stock sample setup](stock-sample.md).
 - **Forward evidence:** the paper tracker records decisions before outcomes and
   has one signal awaiting its exit data. This is the only current source of
   genuinely unseen performance evidence.
@@ -45,10 +47,11 @@ No candidate has earned a live-trading recommendation yet.
 1. **Keep paper tracking intact.** Reconcile each forecast only after its exit
    open is observable. Preserve the saved inputs, source hashes, frozen model
    settings, fills, and cost scenarios; never replace an earlier signal.
-2. **Use public historical data with clear labels.** Continue testing portfolio
-   rules on public ETF and industry series, including market, cash, equal-weight,
-   momentum, and volatility-sized baselines. Report results by year and market
-   regime. Treat all dates already examined as development data.
+2. **Build the stock study carefully.** Export the free 2007–2011 sample using
+   the documented workflow. Keep securities identified by stable `Sid`, report
+   market and year slices, and account for delistings before claiming a complete
+   stock return comparison. All five sample years are historical development
+   data, not an untouched holdout.
 3. **Do not promote a learned model yet.** The current models lost to simple
    baselines. Any new features or policy changes must be selected only on
    development data, then frozen before the next future paper observations.
