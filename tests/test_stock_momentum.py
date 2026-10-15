@@ -11,6 +11,7 @@ from src.stock_momentum import (
     run_experiment,
     volatility_exposure,
     block_bootstrap_excess_return,
+    simulate_with_sector_attribution,
 )
 
 
@@ -88,6 +89,24 @@ def test_simulator_charges_turnover_and_delays_returns_until_after_close_trade()
     assert net.loc[dates[2]] == pytest.approx(0.1)
     assert turnover == pytest.approx(1.0 * 252 / 2)
     assert equity.loc[dates[2]] == pytest.approx(0.995 * 1.1)
+
+
+def test_sector_attribution_includes_net_trading_costs_and_sums_to_portfolio_return():
+    dates = pd.to_datetime(["2007-01-02", "2007-01-03", "2007-01-04"])
+    returns = pd.DataFrame({"A": [0.0, 0.10, 0.0], "B": [0.0, -0.10, -0.02]}, index=dates)
+    equity, net, turnover, attribution = simulate_with_sector_attribution(
+        returns,
+        {dates[0]: {"A": 0.5, "B": 0.5}, dates[2]: {"A": 0.0, "B": 1.0}},
+        30,
+        dates[1],
+        {"A": "Technology", "B": "Financials"},
+    )
+    assert turnover > 0
+    assert attribution.loc[dates[1], "Technology"] > 0
+    assert attribution.loc[dates[1], "Financials"] < 0
+    assert attribution.loc[dates[2], "Financials"] < 0  # includes the rebalance cost
+    assert attribution.sum().sum() == pytest.approx(equity.loc[dates[-1]] - 1.0)
+    assert (1.0 + net).prod() - 1.0 == pytest.approx(equity.loc[dates[-1]] - 1.0)
 
 
 def test_summary_reports_years_and_market_regimes():
@@ -179,5 +198,9 @@ def test_full_experiment_is_serializable_and_compares_all_fixed_baselines():
     assert spy["excess_net_return_vs_spy"] == pytest.approx(0.0)
     assert all("within_research_drawdown_budget" in row for row in report["results"])
     assert all("block_bootstrap_excess_net_return_vs_spy" in row for row in report["results"])
+    assert all("sector_net_pnl_contribution_on_initial_equity" in row for row in report["results"])
+    for row in report["results"]:
+        sector_contribution = sum(row["sector_net_pnl_contribution_on_initial_equity"].values())
+        assert sector_contribution == pytest.approx(row["net_return"])
     import json
     json.dumps(report, allow_nan=False)
