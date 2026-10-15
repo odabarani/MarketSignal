@@ -10,6 +10,7 @@ from src.stock_momentum import (
     summarize,
     run_experiment,
     volatility_exposure,
+    block_bootstrap_excess_return,
 )
 
 
@@ -99,6 +100,29 @@ def test_summary_reports_years_and_market_regimes():
     assert result["market_regime_net_returns"]["Above"]["sessions"] == 1
 
 
+def test_block_bootstrap_pairs_dates_and_is_reproducible():
+    dates = pd.bdate_range("2020-01-01", periods=80)
+    benchmark = pd.Series(np.tile([-0.01, 0.01], 40), index=dates)
+    strategy = benchmark + 0.001
+    first = block_bootstrap_excess_return(
+        strategy, benchmark, block_sessions=10, resamples=100, seed=7
+    )
+    second = block_bootstrap_excess_return(
+        strategy, benchmark, block_sessions=10, resamples=100, seed=7
+    )
+    assert first == second
+    assert first["sessions"] == 80
+    assert first["percentile_range_95"][0] < first["percentile_range_95"][1]
+    assert "not a predictive interval" in first["interpretation"]
+
+
+def test_identical_strategy_and_benchmark_have_zero_bootstrap_excess():
+    returns = pd.Series(np.tile([-0.02, 0.015], 20))
+    result = block_bootstrap_excess_return(returns, returns, resamples=30)
+    assert result["median_excess_net_return"] == pytest.approx(0.0)
+    assert result["percentile_range_95"] == pytest.approx([0.0, 0.0])
+
+
 def test_volatility_sizing_is_capped_and_requires_a_nonzero_history():
     low_vol = pd.Series(np.tile([-0.002, 0.002], 10))
     assert volatility_exposure(low_vol) == 1.0
@@ -141,5 +165,6 @@ def test_full_experiment_is_serializable_and_compares_all_fixed_baselines():
     spy = next(row for row in report["results"] if row["strategy"] == "SPY buy-and-hold")
     assert spy["excess_net_return_vs_spy"] == pytest.approx(0.0)
     assert all("within_research_drawdown_budget" in row for row in report["results"])
+    assert all("block_bootstrap_excess_net_return_vs_spy" in row for row in report["results"])
     import json
     json.dumps(report, allow_nan=False)
