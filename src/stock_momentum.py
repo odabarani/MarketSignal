@@ -156,45 +156,71 @@ def build_targets(
     return targets, regime, first_valid_effective
 
 
-def target_entry_capacity(
-    close: pd.DataFrame,
+def target_order_capacity(
+    returns: pd.DataFrame,
     targets: dict[str, dict[pd.Timestamp, dict[str, float]]],
     liquidity_panel: pd.DataFrame,
 ) -> dict[str, dict[str, Any]]:
-    """Screen order-size capacity from signal-date liquidity and target weights.
-
-    This estimates portfolio size where a target entry would reach a stated
-    share of the prior-session adjusted dollar-volume proxy. It is not an
-    execution or market-impact model and excludes sell-side order sizes.
-    """
+    """Screen rebalance capacity from drifted weights and buys as well as sells."""
     liquidity = validate_liquidity_panel(liquidity_panel).pivot(
         index="date", columns="sid", values="average_adjusted_dollar_volume"
     )
-    dates = close.index
+    dates = returns.index
     report: dict[str, dict[str, Any]] = {}
     for strategy, schedule in targets.items():
         rebalance_caps: list[float] = []
-        for execution_date, basket in schedule.items():
-            if not basket:
+        risky_weights: dict[str, float] = {}
+        solvent = True
+        for execution_date, asset_returns in returns.iterrows():
+            portfolio_return = sum(
+                weight * float(asset_returns.get(sid, 0.0))
+                for sid, weight in risky_weights.items()
+            )
+            if portfolio_return <= -1.0:
+                risky_weights = {}
+                solvent = False
+            else:
+                risky_weights = {
+                    sid: weight * (1.0 + float(asset_returns.get(sid, 0.0)))
+                    / (1.0 + portfolio_return)
+                    for sid, weight in risky_weights.items()
+                    if weight > 0 and (1.0 + float(asset_returns.get(sid, 0.0))) > 0
+                }
+            if execution_date not in schedule or not solvent:
                 continue
-            execution_index = dates.get_loc(execution_date)
-            if execution_index == 0:
-                raise ValueError("Cannot estimate capacity without a prior signal session.")
-            decision_date = dates[execution_index - 1]
-            if decision_date not in liquidity.index:
-                raise ValueError(f"Liquidity is missing for signal date {decision_date.date()}.")
-            adv = liquidity.loc[decision_date]
-            order_limits = []
-            for sid, weight in basket.items():
-                if not np.isfinite(weight) or weight <= 0:
-                    raise ValueError("Capacity targets must have finite positive weights.")
-                if sid not in adv.index or not np.isfinite(adv.get(sid, np.nan)) or adv.get(sid, 0) <= 0:
-                    raise ValueError(
-                        f"Capacity liquidity is missing or invalid for Sid {sid} on {decision_date.date()}."
-                    )
-                order_limits.append(float(adv[sid]) / float(weight))
-            if order_limits:
+
+            raw_target = {
+                str(sid): float(weight)
+                for sid, weight in schedule[execution_date].items()
+            }
+            if (any(not np.isfinite(weight) or weight < 0 for weight in raw_target.values())
+                    or sum(raw_target.values()) > 1.0 + 1e-10):
+                raise ValueError("Capacity targets must be finite, nonnegative, and at most fully invested.")
+            desired = {sid: weight for sid, weight in raw_target.items() if weight > 0}
+            if set(desired).difference(returns.columns):
+                raise ValueError("Capacity target contains a security missing from the return panel.")
+            changes = {
+                sid: abs(desired.get(sid, 0.0) - risky_weights.get(sid, 0.0))
+                for sid in set(risky_weights).union(desired)
+            }
+            changes = {sid: amount for sid, amount in changes.items() if amount > 1e-12}
+            if changes:
+                execution_index = dates.get_loc(execution_date)
+                if execution_index == 0:
+                    raise ValueError("Cannot estimate capacity without a prior signal session.")
+                decision_date = dates[execution_index - 1]
+                if decision_date not in liquidity.index:
+                    raise ValueError(f"Liquidity is missing for signal date {decision_date.date()}.")
+                adv = liquidity.loc[decision_date]
+                order_limits = []
+                for sid, weight_change in changes.items():
+                    if sid not in adv.index or not np.isfinite(adv.get(sid, np.nan)) or adv.get(sid, 0) <= 0:
+                        raise ValueError(
+                            f"Capacity liquidity is missing or invalid for Sid {sid} on {decision_date.date()}."
+                        )
+                    order_limits.append(float(adv[sid]) / weight_change)
                 rebalance_caps.append(min(order_limits))
+            risky_weights = desired
 
         by_participation = {}
         for participation in ADV_PARTICIPATION_STRESS:
@@ -309,9 +335,13 @@ def _simulate_with_attribution(
                 risky_weights = {sid: weight / total_weight for sid, weight in risky_weights.items()}
 
         if date in targets and equity > 0:
-            desired = {str(sid): float(weight) for sid, weight in targets[date].items() if weight > 0}
-            if any(not np.isfinite(weight) for weight in desired.values()) or sum(desired.values()) > 1 + 1e-10:
+            raw_target = {
+                str(sid): float(weight) for sid, weight in targets[date].items()
+            }
+            if (any(not np.isfinite(weight) or weight < 0 for weight in raw_target.values())
+                    or sum(raw_target.values()) > 1 + 1e-10):
                 raise ValueError("Target weights must be finite, nonnegative, and at most fully invested.")
+            desired = {sid: weight for sid, weight in raw_target.items() if weight > 0}
             if set(desired).difference(returns.columns):
                 raise ValueError("Target contains a security missing from the return panel.")
             traded = set(risky_weights).union(desired)
@@ -457,7 +487,6 @@ def run_experiment(
     """Compare simple stock momentum with cash, SPY, and equal-weight stocks."""
     close, spy_sid, stock_sids = make_price_matrices(panel, metadata)
     targets, regime, start = build_targets(close, stock_sids, spy_sid, liquidity_panel)
-    capacity = target_entry_capacity(close, targets, liquidity_panel)
     sector_by_sid = metadata.set_index(metadata["sid"].astype(str))["sector"].fillna("Unknown").to_dict()
     sector_by_sid = {
         sid: (str(sector).strip() or "Unknown") for sid, sector in sector_by_sid.items()
@@ -465,8 +494,12 @@ def run_experiment(
     sector_by_sid[spy_sid] = "Market ETF"
     results = []
     daily_results: dict[tuple[str, int, str], pd.Series] = {}
+    capacity_by_scenario = {}
     for scenario in ("zero_recovery", "last_quote"):
         returns = daily_returns(close, metadata, scenario)
+        capacity_by_scenario[scenario] = target_order_capacity(
+            returns, targets, liquidity_panel
+        )
         for strategy in STRATEGIES:
             for cost in cost_bps:
                 equity, net_returns, annual_turnover, sector_pnl = simulate_with_sector_attribution(
@@ -538,14 +571,14 @@ def run_experiment(
             "stock_security_ids": len(stock_sids),
             "start": str(start.date()),
         },
-        "target_entry_capacity_screen": {
-            "metric": "Portfolio size proxy at which an entry reaches the stated share of signal-date adjusted Close × Volume.",
+        "target_order_capacity_screen": {
+            "metric": "Portfolio size proxy at which any rebalance order reaches the stated share of signal-date adjusted Close × Volume.",
             "participation_scenarios": list(ADV_PARTICIPATION_STRESS),
             "limitations": [
-                "This is an entry-order size screen, not a market-impact or fill model; sell orders and within-day volume patterns are omitted.",
+                "This screen includes buys and sells based on drifted weights, but is not a market-impact or fill model and omits within-day volume patterns.",
                 "Liquidity uses adjusted Close × Volume as a point-in-time proxy, not literal nominal trading dollars.",
             ],
-            "by_strategy": capacity,
+            "by_delisting_scenario_and_strategy": capacity_by_scenario,
         },
         "limitations": [
             "Every historical year is development data; none is an untouched holdout.",
