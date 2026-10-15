@@ -9,6 +9,7 @@ from src.stock_momentum import (
     simulate,
     summarize,
     run_experiment,
+    volatility_exposure,
 )
 
 
@@ -88,6 +89,15 @@ def test_summary_reports_years_and_market_regimes():
     assert result["market_regime_net_returns"]["Above"]["sessions"] == 1
 
 
+def test_volatility_sizing_is_capped_and_requires_a_nonzero_history():
+    low_vol = pd.Series(np.tile([-0.002, 0.002], 10))
+    assert volatility_exposure(low_vol) == 1.0
+    larger_moves = pd.Series(np.tile([-0.05, 0.05], 10))
+    assert volatility_exposure(larger_moves) < 1.0
+    assert volatility_exposure(pd.Series([0.01] * 19)) == 0.0
+    assert volatility_exposure(pd.Series([0.0] * 20)) == 0.0
+
+
 def test_delisted_sid_without_last_price_date_is_rejected():
     dates = pd.to_datetime(["2007-01-02", "2007-01-03"])
     close = pd.DataFrame({"STOCK-A": [10.0, np.nan]}, index=dates)
@@ -112,10 +122,10 @@ def test_full_experiment_is_serializable_and_compares_all_fixed_baselines():
     metadata = metadata_rows()
     report = run_experiment(panel, metadata, cost_bps=(30,))
     assert report["phase"] == "historical_development_only"
-    assert len(report["results"]) == 10
+    assert len(report["results"]) == 12
     assert {row["strategy"] for row in report["results"]} == {
         "Cash", "SPY buy-and-hold", "Equal-weight stocks", "12-1 momentum",
-        "12-1 momentum with SPY trend",
+        "12-1 momentum with SPY trend", "12-1 momentum with 10% volatility target",
     }
     import json
     json.dumps(report, allow_nan=False)

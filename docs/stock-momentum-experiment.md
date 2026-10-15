@@ -8,7 +8,8 @@ python stock_momentum_research.py
 
 The report is saved to `data/stock_momentum_development.json`. It compares cash,
 SPY buy-and-hold, monthly equal-weight stocks, 12-1 cross-sectional momentum,
-and momentum held only above SPY's 200-day trend. All rules use the same
+momentum held only above SPY's 200-day trend, and momentum sized to a fixed 10%
+annualized volatility target with exposure capped at 100%. All rules use the same
 evaluation dates. The momentum basket holds the top 10% of eligible stocks with
 positive 12-month returns after skipping the latest month.
 
@@ -24,8 +25,8 @@ returns, Sharpe ratio, maximum drawdown, turnover, calendar-year returns, and
 returns above and below SPY's 200-day average. The report also runs two
 delisting cases: zero recovery after the last observed price as a conservative
 stress, and carrying the last quote as an optimistic assumption. Neither is an
-observed payout; the spread between them shows how much missing recovery data
-matters.
+observed payout, and the last quote is not an upper bound on merger proceeds;
+the spread between scenarios shows how much missing recovery data matters.
 
 This is a historical development comparison, not a hidden test. The five-year
 sample has already been examined at the broader market level, so its results

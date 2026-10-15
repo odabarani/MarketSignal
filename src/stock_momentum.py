@@ -14,10 +14,27 @@ MIN_HISTORY = 200
 LIQUIDITY_SESSIONS = 20
 MIN_DOLLAR_VOLUME = 5_000_000.0
 TOP_FRACTION = 0.10
+TARGET_VOLATILITY = 0.10
 COSTS_BPS = (15, 30, 50)
 STRATEGIES = ("Cash", "SPY buy-and-hold", "Equal-weight stocks",
-              "12-1 momentum", "12-1 momentum with SPY trend")
+              "12-1 momentum", "12-1 momentum with SPY trend",
+              "12-1 momentum with 10% volatility target")
 SECURITY_TYPES = {"Common Stock", "Depositary Receipt"}
+
+
+def volatility_exposure(
+    basket_returns: pd.Series, target_volatility: float = TARGET_VOLATILITY
+) -> float:
+    """Scale a long-only basket to a fixed volatility target, capped at 100%."""
+    if not np.isfinite(target_volatility) or not 0 < target_volatility <= 1:
+        raise ValueError("Target volatility must be finite and in (0, 1].")
+    values = basket_returns.tail(20).to_numpy(dtype=float)
+    if len(values) < 20 or not np.isfinite(values).all():
+        return 0.0
+    volatility = float(np.std(values, ddof=1) * np.sqrt(252))
+    if not np.isfinite(volatility) or volatility <= 0:
+        return 0.0
+    return min(1.0, target_volatility / volatility)
 
 
 def make_price_matrices(
@@ -63,6 +80,7 @@ def build_targets(
     adv = dollar_volume.rolling(LIQUIDITY_SESSIONS, min_periods=15).mean()
     spy_sma = filled[spy_sid].rolling(200, min_periods=200).mean()
     spy_above_trend = filled[spy_sid] > spy_sma
+    stock_daily_returns = filled[stock_sids].pct_change(fill_method=None).fillna(0.0)
 
     monthly_last = pd.Series(dates, index=dates).groupby(dates.to_period("M")).last()
     raw_targets: dict[str, dict[pd.Timestamp, dict[str, float]]] = {
@@ -100,6 +118,13 @@ def build_targets(
         raw_targets["12-1 momentum"][execution_date] = momentum_target
         trend_target = momentum_target if bool(spy_above_trend.loc[decision]) else {}
         raw_targets["12-1 momentum with SPY trend"][execution_date] = trend_target
+        if momentum_target:
+            basket_returns = stock_daily_returns.loc[:decision, list(momentum_target)].mean(axis=1)
+            exposure = volatility_exposure(basket_returns)
+            scaled_target = {sid: weight * exposure for sid, weight in momentum_target.items()}
+        else:
+            scaled_target = {}
+        raw_targets["12-1 momentum with 10% volatility target"][execution_date] = scaled_target
 
     if first_valid_effective is None:
         raise ValueError(
@@ -284,6 +309,8 @@ def run_experiment(
             "liquidity_lookback_sessions": LIQUIDITY_SESSIONS,
             "minimum_average_dollar_volume": MIN_DOLLAR_VOLUME,
             "momentum_top_fraction": TOP_FRACTION,
+            "volatility_target": TARGET_VOLATILITY,
+            "volatility_lookback_sessions": 20,
             "rebalancing": "Monthly signal at close, trade at next session close.",
             "universe": "Common Stock and Depositary Receipt per latest master snapshot; no active-only filter.",
             "execution_costs_bps_per_side": list(cost_bps),
@@ -296,7 +323,7 @@ def run_experiment(
         "limitations": [
             "Every historical year is development data; none is an untouched holdout.",
             "The current securities-master snapshot classifies security types and delisting events; it is not point-in-time classification data.",
-            "Zero recovery after the last price is a conservative delisting stress, not an observed payout; last-quote carry is an optimistic bound.",
+            "Zero recovery after the last price is a conservative stress, not an observed payout; last-quote carry is an optimistic assumption, not an upper bound on merger consideration.",
             "Fixed costs omit market impact, taxes, cash yield, and capacity constraints beyond a rolling dollar-volume screen.",
             "Adjusted close-to-close prices approximate total returns and assume trades can execute at the close before costs.",
         ],
