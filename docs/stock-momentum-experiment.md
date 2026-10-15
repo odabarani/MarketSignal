@@ -6,6 +6,10 @@ After exporting the QuantRocket sample, run the fixed comparison:
 python stock_momentum_research.py
 ```
 
+The runner checks SPY's benchmark dates and stops if any year is missing or
+has fewer than 220 sessions or does not span most of the year. This prevents a
+partial export from being reported as the full five-year comparison.
+
 The report is saved to `data/stock_momentum_development.json`. It compares cash,
 SPY buy-and-hold, monthly equal-weight stocks, 12-1 cross-sectional momentum,
 momentum held only above SPY's 200-day trend, and momentum sized to a fixed 10%
