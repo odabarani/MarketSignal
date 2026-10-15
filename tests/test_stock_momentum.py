@@ -92,6 +92,23 @@ def test_simulator_charges_turnover_and_delays_returns_until_after_close_trade()
     assert equity.loc[dates[2]] == pytest.approx(0.995 * 1.1)
 
 
+def test_cash_earns_aligned_rf_and_sector_attribution_reconciles():
+    dates = pd.bdate_range("2007-01-02", periods=2)
+    returns = pd.DataFrame({"A": [0.0, 0.0]}, index=dates)
+    cash = pd.Series([0.01, 0.01], index=dates)
+    equity, _, _ = simulate(
+        returns, {dates[0]: {"A": 0.5}}, 0, dates[0], cash_returns=cash
+    )
+    detailed_equity, _, _, attribution = simulate_with_sector_attribution(
+        returns, {dates[0]: {"A": 0.5}}, 0, dates[0], {"A": "Technology"}, cash
+    )
+    assert equity.iloc[-1] == pytest.approx(1.01 * 1.005)
+    assert detailed_equity.iloc[-1] == pytest.approx(equity.iloc[-1])
+    assert attribution["Cash yield"].sum() == pytest.approx(equity.iloc[-1] - 1.0)
+    with pytest.raises(ValueError, match="available, finite"):
+        simulate(returns, {}, 0, dates[0], cash_returns=cash.iloc[:1])
+
+
 @pytest.mark.parametrize("invalid_weight", [-0.1, float("nan")])
 def test_simulator_rejects_negative_or_nan_target_weights(invalid_weight):
     date = pd.Timestamp("2007-01-02")
@@ -221,15 +238,19 @@ def test_full_experiment_is_serializable_and_compares_all_fixed_baselines():
     ], ignore_index=True)
     metadata = metadata_rows()
     liquidity = monthly_liquidity(dates, ["SPY-SID", "STOCK-A", "STOCK-B"])
-    report = run_experiment(panel, metadata, liquidity, cost_bps=(30,))
+    cash_returns = pd.Series(0.0001, index=dates)
+    report = run_experiment(panel, metadata, liquidity, cost_bps=(30,), cash_returns=cash_returns)
     assert report["phase"] == "historical_development_only"
+    assert report["settings"]["cash_return_source"] == "daily Fama/French RF factor (T-bill proxy)"
     assert len(report["results"]) == 12
     assert {row["strategy"] for row in report["results"]} == {
         "Cash", "SPY buy-and-hold", "Equal-weight stocks", "12-1 momentum",
         "12-1 momentum with SPY trend", "12-1 momentum with 10% volatility target",
     }
     spy = next(row for row in report["results"] if row["strategy"] == "SPY buy-and-hold")
+    cash_result = next(row for row in report["results"] if row["strategy"] == "Cash")
     assert spy["excess_net_return_vs_spy"] == pytest.approx(0.0)
+    assert cash_result["net_return"] > 0
     assert all("within_research_drawdown_budget" in row for row in report["results"])
     assert all("block_bootstrap_excess_net_return_vs_spy" in row for row in report["results"])
     assert all("sector_net_pnl_contribution_on_initial_equity" in row for row in report["results"])
@@ -239,6 +260,6 @@ def test_full_experiment_is_serializable_and_compares_all_fixed_baselines():
     )
     for row in report["results"]:
         sector_contribution = sum(row["sector_net_pnl_contribution_on_initial_equity"].values())
-        assert sector_contribution == pytest.approx(row["net_return"])
+        assert sector_contribution == pytest.approx(row["net_return"]), row["strategy"]
     import json
     json.dumps(report, allow_nan=False)
