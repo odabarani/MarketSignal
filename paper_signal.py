@@ -42,6 +42,50 @@ def append_event(path, event):
         handle.flush()
 
 
+def load_universe_config(path):
+    """Load and fingerprint a versioned, fixed prospective ticker roster."""
+    path = Path(path)
+    raw = path.read_bytes()
+    try:
+        config = json.loads(raw)
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ValueError("Universe file must contain valid UTF-8 JSON.") from exc
+    if not isinstance(config, dict):
+        raise ValueError("Universe file must contain a JSON object.")
+    universe_id = config.get("universe_id")
+    selected_on = config.get("selected_on")
+    method = config.get("selection_method")
+    tickers = config.get("tickers")
+    sector_groups = config.get("sector_groups")
+    if (not isinstance(universe_id, str) or not universe_id.strip()
+            or not isinstance(method, str) or not method.strip()
+            or not isinstance(tickers, list) or not tickers
+            or any(not isinstance(ticker, str) for ticker in tickers)
+            or not isinstance(sector_groups, dict) or not sector_groups):
+        raise ValueError("Universe file needs an id, selection method, sector groups, and ticker list.")
+    normalized = [ticker.strip().upper() for ticker in tickers]
+    if (any(not ticker for ticker in normalized) or len(set(normalized)) != len(normalized)
+            or normalized != tickers):
+        raise ValueError("Universe tickers must be unique, nonempty uppercase symbols.")
+    grouped = []
+    for sector, members in sector_groups.items():
+        if (not isinstance(sector, str) or not sector.strip() or not isinstance(members, list)
+                or not members or any(not isinstance(member, str) for member in members)):
+            raise ValueError("Universe sector groups must map sector names to ticker lists.")
+        grouped.extend(members)
+    if len(grouped) != len(set(grouped)) or set(grouped) != set(normalized):
+        raise ValueError("Universe sector groups must partition the ticker roster exactly once.")
+    try:
+        if not isinstance(selected_on, str) or str(pd.Timestamp(selected_on).date()) != selected_on:
+            raise ValueError
+    except (TypeError, ValueError):
+        raise ValueError("Universe selected_on must be an ISO date (YYYY-MM-DD).")
+    metadata = {"id": universe_id, "selected_on": selected_on,
+                "selection_method": method, "sector_count": len(sector_groups),
+                "sha256": sha256(raw).hexdigest()}
+    return normalized, metadata
+
+
 def raw_panel_from_market(market):
     frames = []
     for ticker, frame in market.items():
@@ -157,13 +201,27 @@ def portfolio_mark(prepared, signals, as_of):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--tickers", nargs="+", default=DEFAULT_TICKERS)
+    parser.add_argument("--tickers", nargs="+", help="Use a fixed ticker list for this ledger.")
+    parser.add_argument("--universe-file", help="Load a versioned, frozen ticker roster from JSON.")
     parser.add_argument("--ledger", default="data/paper/signals.jsonl")
     parser.add_argument("--snapshot-dir", default="data/paper/snapshots")
     parser.add_argument("--reconciliation-snapshot-dir", default="data/paper/reconciliation-snapshots")
     parser.add_argument("--input", help="Use a saved current-session CSV snapshot instead of downloading.")
     args = parser.parse_args(argv)
-    tickers = list(dict.fromkeys(symbol.strip().upper() for symbol in args.tickers))
+    if args.universe_file and args.tickers:
+        parser.error("Choose --universe-file or --tickers, not both.")
+    if args.universe_file:
+        try:
+            tickers, universe = load_universe_config(args.universe_file)
+        except (OSError, ValueError) as exc:
+            parser.error(str(exc))
+    else:
+        tickers = list(dict.fromkeys(symbol.strip().upper()
+                                     for symbol in (args.tickers or DEFAULT_TICKERS)))
+        canonical = json.dumps(tickers, separators=(",", ":"), ensure_ascii=True)
+        universe = {"id": "custom-ticker-list", "selected_on": None,
+                    "selection_method": "Ticker list supplied at run time.",
+                    "sha256": sha256(canonical.encode("utf-8")).hexdigest()}
     if not tickers or any(not symbol for symbol in tickers):
         parser.error("Provide a fixed, nonempty ticker universe.")
 
@@ -175,13 +233,19 @@ def main(argv=None):
                       if event.get("event") == "paper_reconciled"}
     if signals and signals[0].get("tickers") != tickers:
         parser.error("Keep the same ticker list for a paper ledger; start a new ledger for another universe.")
+    saved_universe = signals[0].get("universe") if signals else None
+    if saved_universe and saved_universe.get("sha256") != universe["sha256"]:
+        parser.error("Keep the original frozen universe file for this paper ledger.")
 
     if args.input:
         raw = pd.read_csv(args.input, parse_dates=["Date"]).set_index(["Date", "Ticker"]).sort_index()
         if sorted(raw.index.get_level_values("Ticker").unique()) != sorted(tickers):
             parser.error("Input snapshot tickers must match --tickers.")
     else:
-        raw = raw_panel_from_market(get_research_market_data(tickers))
+        try:
+            raw = raw_panel_from_market(get_research_market_data(tickers))
+        except (OSError, ValueError) as exc:
+            parser.error(f"Could not load complete public price data for this universe: {exc}")
     dates = raw.index.get_level_values("Date").unique().sort_values()
     as_of = dates[-1]
     eastern = datetime.now(ZoneInfo("America/New_York"))
@@ -239,7 +303,7 @@ def main(argv=None):
                 handle.write(source_text.encode("utf-8"))
         snapshot_hash = sha256(snapshot.read_bytes()).hexdigest()
         model_hash = code_fingerprint()
-        signal_id = sha256(f"{as_of.date()}|{source_hash}|{model_hash}".encode()).hexdigest()
+        signal_id = sha256(f"{as_of.date()}|{source_hash}|{model_hash}|{universe['sha256']}".encode()).hexdigest()
         rows = [{"candidate": row.candidate, "ticker": row.Ticker,
                  "expected_return": float(row.expected_return)}
                 for row in forecasts.itertuples(index=False)]
@@ -249,7 +313,7 @@ def main(argv=None):
                  "as_of": str(as_of.date()), "generated_at_utc": datetime.now(timezone.utc).isoformat(),
                  "execute": "next available session open", "horizon_sessions": POLICY["horizon"],
                  "target_exit": f"open after {POLICY['horizon'] + 1} subsequent sessions",
-                 "tickers": tickers,
+                 "tickers": tickers, "universe": universe,
                  "sessions_since_prior_signal": elapsed_sessions if signals else None,
                  "source_hash": source_hash, "snapshot": str(snapshot),
                  "snapshot_hash": snapshot_hash, "code_fingerprint": model_hash,
@@ -264,7 +328,8 @@ def main(argv=None):
     mark = portfolio_mark(prepared, signals, as_of)
     if mark and not any(event.get("event") == "paper_portfolio_mark"
                         and event.get("observed_through") == str(as_of.date()) for event in events):
-        append_event(ledger, {**mark, "source_hash": source_hash})
+        append_event(ledger, {**mark, "source_hash": source_hash,
+                              "universe": universe})
     print(f"Latest complete session: {as_of.date()}")
     print(f"Mature forecasts reconciled this run: {reconciled}")
     if created:

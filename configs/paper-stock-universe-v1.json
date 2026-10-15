@@ -1,0 +1,31 @@
+{
+  "universe_id": "us-large-cap-diversified-2026-10-14-v1",
+  "selected_on": "2026-10-14",
+  "selection_method": "Manually fixed prospective research basket of widely followed U.S. companies, grouped across 11 GICS sectors. The roster was not reconstructed for earlier years and is not an investable index reconstruction.",
+  "sector_groups": {
+    "Communication Services": ["GOOGL", "META", "DIS", "TMUS"],
+    "Consumer Discretionary": ["AMZN", "HD"],
+    "Consumer Staples": ["WMT", "COST", "PG", "KO", "PEP"],
+    "Energy": ["XOM", "CVX", "COP"],
+    "Financials": ["JPM", "BAC", "V"],
+    "Health Care": ["JNJ", "LLY", "ABBV"],
+    "Industrials": ["CAT", "GE", "RTX", "HON"],
+    "Information Technology": ["AAPL", "MSFT", "NVDA", "AVGO"],
+    "Materials": ["LIN", "SHW", "NEM"],
+    "Real Estate": ["PLD", "AMT", "EQIX"],
+    "Utilities": ["NEE", "DUK", "SO"]
+  },
+  "tickers": [
+    "AAPL", "MSFT", "NVDA", "AVGO",
+    "JPM", "BAC", "V",
+    "JNJ", "LLY", "ABBV",
+    "AMZN", "WMT", "COST", "HD",
+    "PG", "KO", "PEP",
+    "XOM", "CVX", "COP",
+    "CAT", "GE", "RTX", "HON",
+    "GOOGL", "META", "DIS", "TMUS",
+    "LIN", "SHW", "NEM",
+    "NEE", "DUK", "SO",
+    "PLD", "AMT", "EQIX"
+  ]
+}

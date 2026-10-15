@@ -1,10 +1,11 @@
 import json
 from hashlib import sha256
+from pathlib import Path
 
 import pandas as pd
 import pytest
 
-from paper_signal import reconcile_signals
+from paper_signal import load_universe_config, main, reconcile_signals
 from src.return_research import POLICY
 
 
@@ -104,3 +105,63 @@ def test_reconcile_rejects_source_text_that_does_not_match_hash(tmp_path):
     with pytest.raises(ValueError, match="must match its saved hash"):
         reconcile_signals(panel.loc[:dates[6]], [saved_signal(dates[0])], set(), "bad-hash",
                           tmp_path / "signals.jsonl", "source", tmp_path / "snapshots")
+
+
+def test_universe_config_returns_fixed_roster_and_content_hash(tmp_path):
+    config = tmp_path / "universe.json"
+    raw = ('{"universe_id":"sample-v1","selected_on":"2026-10-14",'
+           '"selection_method":"fixed prospective sample","tickers":["AAA","BBB"],'
+           '"sector_groups":{"Sector A":["AAA"],"Sector B":["BBB"]}}')
+    config.write_text(raw)
+
+    tickers, metadata = load_universe_config(config)
+
+    assert tickers == ["AAA", "BBB"]
+    assert metadata["id"] == "sample-v1"
+    assert metadata["selected_on"] == "2026-10-14"
+    assert metadata["sector_count"] == 2
+    assert metadata["sha256"] == sha256(raw.encode()).hexdigest()
+
+
+@pytest.mark.parametrize("tickers", [["AAA", "AAA"], ["aaa"], ["AAA", ""]])
+def test_universe_config_rejects_mutable_or_malformed_rosters(tmp_path, tickers):
+    config = tmp_path / "universe.json"
+    config.write_text(json.dumps({"universe_id": "sample-v1", "selected_on": "2026-10-14",
+                                  "selection_method": "fixed prospective sample",
+                                  "tickers": tickers,
+                                  "sector_groups": {"Sector": tickers}}))
+
+    with pytest.raises(ValueError, match="ticker"):
+        load_universe_config(config)
+
+
+def test_universe_config_rejects_sector_partition_mismatch(tmp_path):
+    config = tmp_path / "universe.json"
+    config.write_text(json.dumps({"universe_id": "sample-v1", "selected_on": "2026-10-14",
+                                  "selection_method": "fixed prospective sample",
+                                  "tickers": ["AAA", "BBB"],
+                                  "sector_groups": {"Sector A": ["AAA"]}}))
+
+    with pytest.raises(ValueError, match="partition"):
+        load_universe_config(config)
+
+
+def test_paper_signal_reports_public_data_failure_without_writing_a_signal(
+        tmp_path, monkeypatch, capsys):
+    import paper_signal
+
+    def fail_download(_tickers):
+        raise ValueError("No price data was returned for SPY.")
+
+    monkeypatch.setattr(paper_signal, "get_research_market_data", fail_download)
+    root = Path(__file__).resolve().parents[1]
+    ledger = tmp_path / "stock-paper" / "signals.jsonl"
+
+    with pytest.raises(SystemExit) as error:
+        main(["--universe-file", str(root / "configs/paper-stock-universe-v1.json"),
+              "--ledger", str(ledger), "--snapshot-dir", str(tmp_path / "snapshots"),
+              "--reconciliation-snapshot-dir", str(tmp_path / "reconciliations")])
+
+    assert error.value.code == 2
+    assert "Could not load complete public price data" in capsys.readouterr().err
+    assert not ledger.exists()

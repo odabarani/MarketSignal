@@ -25,3 +25,29 @@ Paper results are prospective evidence for this fixed research policy. They do
 not prove future profitability. Yahoo may revise adjusted history, costs remain
 assumptions, and the ETF universe does not replace point-in-time individual
 stocks or delisted coverage.
+
+## Separate prospective stock test
+
+The fixed 37-stock roster in
+[`configs/paper-stock-universe-v1.json`](../configs/paper-stock-universe-v1.json)
+starts a separate prospective test. Its roster is spread across 11 sectors and
+has a content hash recorded with each new signal. Keep the file unchanged; make
+a new version and a new ledger if the roster changes.
+
+Run it after the market close with its own ledger and snapshots:
+
+```bash
+python paper_signal.py \
+  --universe-file configs/paper-stock-universe-v1.json \
+  --ledger data/paper/stocks-v1/signals.jsonl \
+  --snapshot-dir data/paper/stocks-v1/snapshots \
+  --reconciliation-snapshot-dir data/paper/stocks-v1/reconciliation-snapshots
+```
+
+This begins a test of future predictions on a frozen stock basket; it does not
+turn that basket's historical prices into a point-in-time backtest. The current
+roster was chosen in 2026, so historical training and comparisons still have
+survivor-selection and ticker-coverage limits. Public price feeds may also omit
+a stock after it delists. Do not replace a missing ticker or score a terminal
+outcome until its exit value is verified. Keep this stream separate from the
+ETF ledger and do not combine their returns into one claim.
