@@ -24,7 +24,7 @@ BUNDLE = "usstock-learn-1d"
 START_DATE = "2007-01-01"
 END_DATE = "2011-12-31"
 MASTER_FIELDS = [
-    "Sid", "usstock_DateDelisted", "usstock_FirstPriceDate",
+    "Sid", "usstock_Symbol", "usstock_DateDelisted", "usstock_FirstPriceDate",
     "usstock_LastPriceDate", "usstock_SecurityType2", "usstock_Sector",
 ]
 
@@ -56,6 +56,7 @@ def master_to_metadata(securities: pd.DataFrame, panel_sids: set[str]) -> pd.Dat
         master = master.reset_index()
     master = master.rename(columns={
         "Sid": "sid",
+        "usstock_Symbol": "symbol",
         "usstock_DateDelisted": "date_delisted",
         "usstock_FirstPriceDate": "first_price_date",
         "usstock_LastPriceDate": "last_price_date",
@@ -142,7 +143,7 @@ def export(output: Path, force: bool = False) -> dict[str, object]:
             "security_metadata_file": metadata_path.name,
             "security_metadata_sha256": file_sha256(temporary_metadata),
             "security_metadata_fields": [
-                "Sid", "DateDelisted", "FirstPriceDate", "LastPriceDate",
+                "Sid", "Symbol", "DateDelisted", "FirstPriceDate", "LastPriceDate",
                 "SecurityType2", "Sector",
             ],
             "security_metadata_role": (

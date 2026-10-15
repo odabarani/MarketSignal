@@ -52,8 +52,10 @@ No candidate has earned a live-trading recommendation yet.
 2. **Build the stock study carefully.** Export the free 2007–2011 sample using
    the documented workflow. Keep securities identified by stable `Sid`, report
    market and year slices, and account for delistings before claiming a complete
-   stock return comparison. All five sample years are historical development
-   data, not an untouched holdout.
+   stock return comparison. The fixed comparison runner tests 12-1 momentum
+   against cash, SPY, and equal-weight stocks with cost and delisting stress.
+   All five sample years are historical development data, not an untouched
+   holdout. See [the stock experiment](stock-momentum-experiment.md).
 3. **Do not promote a learned model yet.** The current models lost to simple
    baselines. Any new features or policy changes must be selected only on
    development data, then frozen before the next future paper observations.

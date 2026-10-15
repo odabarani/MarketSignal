@@ -83,6 +83,7 @@ def test_quantrocket_master_export_preserves_delisting_labels_by_sid():
     from export_quantrocket_stock_sample import master_to_metadata
 
     securities = pd.DataFrame({
+        "usstock_Symbol": ["OLD", "LIVE"],
         "usstock_DateDelisted": ["2009-03-12", None],
         "usstock_FirstPriceDate": ["2007-01-03", "2007-01-03"],
         "usstock_LastPriceDate": ["2009-03-10", "2011-12-30"],
@@ -97,7 +98,7 @@ def test_quantrocket_master_export_preserves_delisting_labels_by_sid():
 
 def test_security_metadata_rejects_missing_panel_sid():
     metadata = pd.DataFrame({
-        "sid": ["SID-A"], "date_delisted": [None],
+        "sid": ["SID-A"], "symbol": ["A"], "date_delisted": [None],
         "first_price_date": ["2007-01-03"], "last_price_date": [None],
         "security_type": ["Common Stock"], "sector": ["Technology"],
     })
@@ -114,6 +115,7 @@ def test_export_writes_panel_master_snapshot_and_hash_manifest(tmp_path, monkeyp
         return pd.DataFrame({"SID-A": [10.0, 100]}, index=index)
 
     securities = pd.DataFrame({
+        "usstock_Symbol": ["AAA"],
         "usstock_DateDelisted": [None],
         "usstock_FirstPriceDate": ["2007-01-03"],
         "usstock_LastPriceDate": ["2011-12-30"],

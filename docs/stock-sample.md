@@ -29,8 +29,8 @@ python export_quantrocket_stock_sample.py
 The exporter writes `data/research_inputs/quantrocket_usstock_learn_2007_2011.csv.gz`,
 a companion securities-master snapshot, and a JSON manifest with date coverage,
 security counts, source details, and SHA-256 hashes. The snapshot includes
-delisting dates, first and last price dates, security type, and sector. These
-are current labels for research and event checks only; do not use them as
+current symbols, delisting dates, first and last price dates, security type,
+and sector. These are current labels for research and event checks only; do not use them as
 historical signal inputs or to decide which stocks were eligible in the past.
 The exporter refuses to overwrite existing files unless `--force` is supplied.
 It downloads prices one year at a time to keep memory use manageable. Generated

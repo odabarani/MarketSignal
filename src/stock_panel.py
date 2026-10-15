@@ -10,7 +10,7 @@ import numpy as np
 
 STOCK_PANEL_COLUMNS = ["sid", "date", "close", "volume"]
 SECURITY_METADATA_COLUMNS = [
-    "sid", "date_delisted", "first_price_date", "last_price_date",
+    "sid", "symbol", "date_delisted", "first_price_date", "last_price_date",
     "security_type", "sector",
 ]
 LEARNING_SAMPLE_START = pd.Timestamp("2007-01-01")
@@ -63,6 +63,8 @@ def validate_security_metadata(
         raise ValueError("Security metadata contains a missing or blank Sid.")
     if result["sid"].duplicated().any():
         raise ValueError("Security metadata contains duplicate Sid values.")
+    result["symbol"] = result["symbol"].astype("string").str.strip().str.upper()
+    result["security_type"] = result["security_type"].astype("string").str.strip()
     panel_sids = {str(sid).strip() for sid in panel_sids}
     unmatched = panel_sids.difference(set(result["sid"].astype(str)))
     if unmatched:
@@ -100,3 +102,16 @@ def load_stock_panel(path: str | Path) -> tuple[pd.DataFrame, dict[str, object]]
         "columns": STOCK_PANEL_COLUMNS,
     }
     return panel, metadata
+
+
+def load_security_metadata(
+    path: str | Path, panel_sids: set[str] | list[str]
+) -> tuple[pd.DataFrame, dict[str, object]]:
+    """Load and validate the companion master snapshot against panel Sids."""
+    path = Path(path)
+    metadata = validate_security_metadata(pd.read_csv(path, compression="infer"), panel_sids)
+    return metadata, {
+        "file": path.name,
+        "sha256": file_sha256(path),
+        "rows": int(len(metadata)),
+    }

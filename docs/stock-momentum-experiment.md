@@ -1,0 +1,36 @@
+# Stock momentum comparison
+
+After exporting the QuantRocket sample, run the fixed comparison:
+
+```bash
+python stock_momentum_research.py
+```
+
+The report is saved to `data/stock_momentum_development.json`. It compares cash,
+SPY buy-and-hold, monthly equal-weight stocks, 12-1 cross-sectional momentum,
+and momentum held only above SPY's 200-day trend. All rules use the same
+evaluation dates. The momentum basket holds the top 10% of eligible stocks with
+positive 12-month returns after skipping the latest month.
+
+Eligibility uses a current close, at least 200 observed prices over the previous
+252 market sessions, and at least $5 million in average daily dollar volume over
+the previous 20 sessions. Eligible securities are Common Stock or Depositary
+Receipts according to the latest QuantRocket master snapshot. This static type
+label can be revised and is not a point-in-time classification.
+
+Signals are formed at month-end close and traded at the next session's close.
+Performance includes 15, 30, and 50 basis points per side, net compounded
+returns, Sharpe ratio, maximum drawdown, turnover, calendar-year returns, and
+returns above and below SPY's 200-day average. The report also runs two
+delisting cases: zero recovery after the last observed price as a conservative
+stress, and carrying the last quote as an optimistic assumption. Neither is an
+observed payout; the spread between them shows how much missing recovery data
+matters.
+
+This is a historical development comparison, not a hidden test. The five-year
+sample has already been examined at the broader market level, so its results
+cannot satisfy the goal of genuinely unseen validation. It also uses a current
+security-type snapshot, close-price execution, and fixed cost estimates; market
+impact, taxes, cash yield, and trade capacity are not fully modeled. Do not
+promote or describe any rule as profitable from this report. Preserve each run
+under a new filename rather than overwriting an earlier result.
