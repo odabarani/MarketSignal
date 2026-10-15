@@ -14,7 +14,7 @@ LOOKBACK_SESSIONS = 252
 SKIP_SESSIONS = 21
 MIN_HISTORY = 200
 LIQUIDITY_SESSIONS = 20
-MIN_DOLLAR_VOLUME = 5_000_000.0
+MIN_ADJUSTED_DOLLAR_VOLUME = 5_000_000.0
 TOP_FRACTION = 0.10
 TARGET_VOLATILITY = 0.10
 RESEARCH_DRAWDOWN_BUDGET = 0.20
@@ -79,7 +79,7 @@ def build_targets(
     ).sum()
     liquidity_panel = validate_liquidity_panel(liquidity_panel)
     adv = liquidity_panel.pivot(
-        index="date", columns="sid", values="average_dollar_volume"
+        index="date", columns="sid", values="average_adjusted_dollar_volume"
     ).reindex(index=dates, columns=stock_sids)
     spy_sma = filled[spy_sid].rolling(200, min_periods=200).mean()
     spy_above_trend = filled[spy_sid] > spy_sma
@@ -102,7 +102,7 @@ def build_targets(
             if decision_index >= LOOKBACK_SESSIONS:
                 raise ValueError(f"Monthly liquidity data is missing decision date {decision.date()}.")
             continue
-        eligible &= adv.loc[decision].ge(MIN_DOLLAR_VOLUME)
+        eligible &= adv.loc[decision].ge(MIN_ADJUSTED_DOLLAR_VOLUME)
         scores = momentum.loc[decision, stock_sids]
         ranked = scores.loc[eligible].dropna().sort_values(ascending=False, kind="stable")
         if ranked.empty:
@@ -327,7 +327,9 @@ def run_experiment(
             "min_history_observations": MIN_HISTORY,
             "liquidity_lookback_sessions": LIQUIDITY_SESSIONS,
             "liquidity_values_as_of_each_month_end": True,
-            "minimum_average_dollar_volume": MIN_DOLLAR_VOLUME,
+            "liquidity_measure": "20-session average of adjusted Close times Volume, queried as of each month-end",
+            "liquidity_is_nominal_dollar_volume": False,
+            "minimum_adjusted_dollar_volume_proxy": MIN_ADJUSTED_DOLLAR_VOLUME,
             "momentum_top_fraction": TOP_FRACTION,
             "volatility_target": TARGET_VOLATILITY,
             "volatility_lookback_sessions": 20,
@@ -345,7 +347,7 @@ def run_experiment(
             "Every historical year is development data; none is an untouched holdout.",
             "The current securities-master snapshot classifies security types and delisting events; it is not point-in-time classification data.",
             "Zero recovery after the last price is a conservative stress, not an observed payout; last-quote carry is an optimistic assumption, not an upper bound on merger consideration.",
-            "Fixed costs omit market impact, taxes, cash yield, and capacity constraints beyond a rolling dollar-volume screen.",
+            "Fixed costs omit market impact, taxes, cash yield, and capacity constraints beyond an adjusted-dollar-volume proxy screen.",
             "Adjusted close-to-close prices approximate total returns and assume trades can execute at the close before costs.",
         ],
         "results": results,

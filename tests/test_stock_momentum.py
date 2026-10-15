@@ -29,7 +29,7 @@ def monthly_liquidity(dates, sids, value=10_000_000.0):
     dates = pd.DatetimeIndex(dates)
     decisions = pd.Series(dates, index=dates).groupby(dates.to_period("M")).last().tolist()
     return pd.DataFrame([
-        {"sid": sid, "date": date, "average_dollar_volume": value}
+        {"sid": sid, "date": date, "average_adjusted_dollar_volume": value}
         for date in decisions for sid in sids
     ])
 

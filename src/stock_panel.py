@@ -9,7 +9,7 @@ import pandas as pd
 import numpy as np
 
 STOCK_PANEL_COLUMNS = ["sid", "date", "close", "volume"]
-LIQUIDITY_PANEL_COLUMNS = ["sid", "date", "average_dollar_volume"]
+LIQUIDITY_PANEL_COLUMNS = ["sid", "date", "average_adjusted_dollar_volume"]
 SECURITY_METADATA_COLUMNS = [
     "sid", "symbol", "date_delisted", "first_price_date", "last_price_date",
     "security_type", "sector",
@@ -52,7 +52,7 @@ def validate_stock_panel(panel: pd.DataFrame) -> pd.DataFrame:
 
 
 def validate_liquidity_panel(panel: pd.DataFrame) -> pd.DataFrame:
-    """Validate monthly, point-in-time average dollar-volume observations."""
+    """Validate point-in-time monthly adjusted-dollar-volume proxy observations."""
     missing = set(LIQUIDITY_PANEL_COLUMNS).difference(panel.columns)
     if missing:
         raise ValueError(f"Liquidity panel is missing required columns: {sorted(missing)}")
@@ -68,14 +68,14 @@ def validate_liquidity_panel(panel: pd.DataFrame) -> pd.DataFrame:
         raise ValueError("Liquidity dates must fall within the 2007–2011 learning sample.")
     if result.duplicated(["sid", "date"]).any():
         raise ValueError("Liquidity panel contains duplicate Sid/date observations.")
-    result["average_dollar_volume"] = pd.to_numeric(
-        result["average_dollar_volume"], errors="coerce"
+    result["average_adjusted_dollar_volume"] = pd.to_numeric(
+        result["average_adjusted_dollar_volume"], errors="coerce"
     )
-    values = result["average_dollar_volume"].to_numpy(dtype=float)
+    values = result["average_adjusted_dollar_volume"].to_numpy(dtype=float)
     if not np.isfinite(values).all():
-        raise ValueError("Liquidity panel contains a missing or non-finite average dollar volume.")
+        raise ValueError("Liquidity panel contains a missing or non-finite adjusted dollar-volume proxy.")
     if (values < 0).any():
-        raise ValueError("Average dollar volume cannot be negative.")
+        raise ValueError("Adjusted dollar-volume proxy cannot be negative.")
     return result.sort_values(["date", "sid"], kind="stable").reset_index(drop=True)
 
 

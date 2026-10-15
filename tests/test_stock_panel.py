@@ -113,13 +113,13 @@ def test_security_metadata_rejects_missing_panel_sid():
 
 
 def test_liquidity_panel_rejects_duplicate_or_invalid_observations():
-    row = {"sid": "SID-A", "date": "2007-01-03", "average_dollar_volume": 10_000_000}
+    row = {"sid": "SID-A", "date": "2007-01-03", "average_adjusted_dollar_volume": 10_000_000}
     valid = validate_liquidity_panel(pd.DataFrame([row]))
-    assert valid.loc[0, "average_dollar_volume"] == 10_000_000
+    assert valid.loc[0, "average_adjusted_dollar_volume"] == 10_000_000
     with pytest.raises(ValueError, match="duplicate"):
         validate_liquidity_panel(pd.DataFrame([row, row]))
     with pytest.raises(ValueError, match="non-finite"):
-        validate_liquidity_panel(pd.DataFrame([{**row, "average_dollar_volume": float("inf")}]))
+        validate_liquidity_panel(pd.DataFrame([{**row, "average_adjusted_dollar_volume": float("inf")}]))
 
 
 def test_monthly_liquidity_query_ends_on_signal_date():
@@ -140,7 +140,7 @@ def test_monthly_liquidity_query_ends_on_signal_date():
 
     result = point_in_time_monthly_liquidity(get_prices, [decision])
     assert calls[0]["end_date"] == "2007-02-01"
-    assert result.loc[0, "average_dollar_volume"] == 10_000_000
+    assert result.loc[0, "average_adjusted_dollar_volume"] == 10_000_000
 
 
 def test_yearly_adjustment_basis_is_linked_at_the_boundary():

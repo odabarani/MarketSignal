@@ -105,7 +105,7 @@ def link_adjusted_price_chunk(
 
 
 def point_in_time_monthly_liquidity(get_prices, decision_dates: list[pd.Timestamp]) -> pd.DataFrame:
-    """Measure 20-session dollar volume with each query ending at its decision date."""
+    """Measure adjusted Close*Volume with each query ending at its decision date."""
     chunks = []
     for decision in decision_dates:
         decision = pd.Timestamp(decision)
@@ -134,7 +134,7 @@ def point_in_time_monthly_liquidity(get_prices, decision_dates: list[pd.Timestam
             chunks.append(pd.DataFrame({
                 "sid": valid.index.astype(str),
                 "date": decision,
-                "average_dollar_volume": valid.to_numpy(dtype=float),
+                "average_adjusted_dollar_volume": valid.to_numpy(dtype=float),
             }))
     if not chunks:
         raise ValueError("QuantRocket returned no valid monthly liquidity observations.")
@@ -247,8 +247,9 @@ def export(output: Path, force: bool = False) -> dict[str, object]:
             "monthly_liquidity_file": liquidity_path.name,
             "monthly_liquidity_sha256": file_sha256(temporary_liquidity),
             "monthly_liquidity_measure": (
-                "20-session mean Close*Volume queried at each month-end with the query "
-                "ending on that date, avoiding later corporate-action adjustments."
+                "20-session mean adjusted Close*Volume queried at each month-end with the "
+                "query ending on that date. This is a point-in-time liquidity proxy, not "
+                "literal nominal dollars traded."
             ),
             "security_metadata_fields": [
                 "Sid", "Symbol", "DateDelisted", "FirstPriceDate", "LastPriceDate",

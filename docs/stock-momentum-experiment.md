@@ -14,11 +14,12 @@ evaluation dates. The momentum basket holds the top 10% of eligible stocks with
 positive 12-month returns after skipping the latest month.
 
 Eligibility uses a current close, at least 200 observed prices over the previous
-252 market sessions, and at least $5 million in average daily dollar volume over
-the previous 20 sessions. Liquidity is queried with each signal date as the
-query end date. Eligible securities are Common Stock or Depositary Receipts
-according to the latest QuantRocket master snapshot. This static type label can
-be revised and is not a point-in-time classification.
+252 market sessions, and at least $5 million in adjusted `Close × Volume` proxy
+over the previous 20 sessions. This screen uses that amount as a
+point-in-time liquidity proxy, not literal nominal trading dollars; each query
+ends on its signal date. Eligible securities are Common Stock or Depositary
+Receipts according to the latest QuantRocket master snapshot. This static type
+label can be revised and is not a point-in-time classification.
 
 Signals are formed at month-end close and traded at the next session's close.
 Performance includes 15, 30, and 50 basis points per side, net compounded

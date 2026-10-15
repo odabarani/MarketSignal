@@ -43,9 +43,10 @@ Each row is one `Sid` and date, with adjusted `Close` and `Volume`. `Sid` is a
 stable security identifier, so ticker changes do not join two companies by
 mistake. The bundle adjusts prices through the end of each query. The exporter
 links the yearly chunks at their shared boundary so daily returns stay
-continuous; it also queries each month-end's dollar volume using that date as
-the query end. Use price ratios and returns rather than historical nominal
-price levels as model inputs.
+continuous; it also queries adjusted `Close × Volume` at each month-end using
+that date as the query end. This is a point-in-time liquidity proxy, not literal
+nominal trading dollars. Use price ratios and returns rather than historical
+nominal price levels as model inputs.
 
 The source includes delisted securities, but neither file includes cash or stock
 consideration paid at delisting. A last observed quote is not necessarily the
