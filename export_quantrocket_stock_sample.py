@@ -33,7 +33,8 @@ def bundle_prices_to_panel(prices: pd.DataFrame) -> pd.DataFrame:
     blocks = []
     for field in ("Close", "Volume"):
         wide = prices.xs(field, level="Field")
-        long = wide.rename_axis(index="date", columns="sid").stack(future_stack=True).rename(field.lower())
+        long = (wide.rename_axis(index="date", columns="sid").stack(future_stack=True)
+                .dropna().rename(field.lower()))
         blocks.append(long)
     panel = pd.concat(blocks, axis=1).reset_index()
     return validate_stock_panel(panel)

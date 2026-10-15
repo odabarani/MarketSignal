@@ -61,3 +61,12 @@ def test_quantrocket_export_rejects_missing_fields():
     index = pd.MultiIndex.from_tuples([("Close", "2007-01-03")], names=["Field", "Date"])
     with pytest.raises(ValueError, match="Close and Volume"):
         bundle_prices_to_panel(pd.DataFrame({"SID-A": [10.0]}, index=index))
+
+
+def test_quantrocket_export_drops_unobserved_security_dates():
+    index = pd.MultiIndex.from_tuples(
+        [("Close", "2007-01-03"), ("Volume", "2007-01-03")], names=["Field", "Date"]
+    )
+    prices = pd.DataFrame({"SID-A": [10.0, 100], "SID-B": [float("nan"), float("nan")]}, index=index)
+    panel = bundle_prices_to_panel(prices)
+    assert panel.sid.tolist() == ["SID-A"]
