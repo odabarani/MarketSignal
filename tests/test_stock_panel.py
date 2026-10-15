@@ -106,10 +106,13 @@ def test_security_metadata_rejects_missing_panel_sid():
 
 
 def test_export_writes_panel_master_snapshot_and_hash_manifest(tmp_path, monkeypatch):
-    index = pd.MultiIndex.from_tuples(
-        [("Close", "2007-01-03"), ("Volume", "2007-01-03")], names=["Field", "Date"]
-    )
-    prices = pd.DataFrame({"SID-A": [10.0, 100]}, index=index)
+    def get_prices(*args, **kwargs):
+        date = f"{kwargs['start_date'][:4]}-01-03"
+        index = pd.MultiIndex.from_tuples(
+            [("Close", date), ("Volume", date)], names=["Field", "Date"]
+        )
+        return pd.DataFrame({"SID-A": [10.0, 100]}, index=index)
+
     securities = pd.DataFrame({
         "usstock_DateDelisted": [None],
         "usstock_FirstPriceDate": ["2007-01-03"],
@@ -118,7 +121,7 @@ def test_export_writes_panel_master_snapshot_and_hash_manifest(tmp_path, monkeyp
         "usstock_Sector": ["Technology"],
     }, index=pd.Index(["SID-A"], name="Sid"))
     quantrocket = types.ModuleType("quantrocket")
-    quantrocket.get_prices = lambda *args, **kwargs: prices
+    quantrocket.get_prices = get_prices
     master = types.ModuleType("quantrocket.master")
     master.get_securities = lambda *args, **kwargs: securities
     monkeypatch.setitem(sys.modules, "quantrocket", quantrocket)
@@ -130,7 +133,10 @@ def test_export_writes_panel_master_snapshot_and_hash_manifest(tmp_path, monkeyp
     manifest_path = tmp_path / "sample.csv.gz.manifest.json"
     assert output.exists() and metadata_path.exists() and manifest_path.exists()
     assert manifest["security_metadata_file"] == metadata_path.name
+    assert manifest["rows"] == 5
+    assert [chunk["year"] for chunk in manifest["yearly_chunks"]] == list(range(2007, 2012))
     assert json.loads(manifest_path.read_text())["security_metadata_sha256"]
-    assert pd.read_csv(metadata_path).loc[0, "sid"] == "SID-A"
+    assert pd.read_csv(output, compression="gzip").sid.nunique() == 1
+    assert pd.read_csv(metadata_path, compression="gzip").loc[0, "sid"] == "SID-A"
     with pytest.raises(FileExistsError, match="Refusing to overwrite"):
         export(output)

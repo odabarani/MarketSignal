@@ -33,7 +33,8 @@ delisting dates, first and last price dates, security type, and sector. These
 are current labels for research and event checks only; do not use them as
 historical signal inputs or to decide which stocks were eligible in the past.
 The exporter refuses to overwrite existing files unless `--force` is supplied.
-Generated data is ignored by Git.
+It downloads prices one year at a time to keep memory use manageable. Generated
+data is ignored by Git.
 
 ## What the export means
 

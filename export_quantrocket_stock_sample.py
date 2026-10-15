@@ -7,6 +7,7 @@ Run this inside a QuantRocket Python/Jupyter environment after ingesting the
 from __future__ import annotations
 
 import argparse
+import gzip
 import json
 from pathlib import Path
 import tempfile
@@ -78,12 +79,6 @@ def export(output: Path, force: bool = False) -> dict[str, object]:
             "creating and ingesting the usstock-learn-1d bundle."
         ) from exc
 
-    prices = get_prices(
-        BUNDLE, fields=["Close", "Volume"], start_date=START_DATE, end_date=END_DATE
-    )
-    panel = bundle_prices_to_panel(prices)
-    securities = get_securities(vendors="usstock", fields=MASTER_FIELDS)
-    master = master_to_metadata(securities, set(panel["sid"].astype(str)))
     output.parent.mkdir(parents=True, exist_ok=True)
     manifest_path = output.with_suffix(output.suffix + ".manifest.json")
     metadata_name = (
@@ -103,7 +98,38 @@ def export(output: Path, force: bool = False) -> dict[str, object]:
         temporary_metadata = Path(stream.name)
     temporary_manifest = output.parent / (temporary_panel.name + ".manifest.json")
     try:
-        panel.to_csv(temporary_panel, index=False, compression="gzip", date_format="%Y-%m-%d")
+        security_ids: set[str] = set()
+        chunk_summaries = []
+        first_date, last_date = None, None
+        row_count = 0
+        # Query one year at a time so the wide all-stock matrices stay manageable.
+        with gzip.open(temporary_panel, "wt", encoding="utf-8", newline="") as output_stream:
+            for year in range(2007, 2012):
+                start_date, end_date = f"{year}-01-01", f"{year}-12-31"
+                prices = get_prices(
+                    BUNDLE, fields=["Close", "Volume"],
+                    start_date=start_date, end_date=end_date,
+                )
+                panel = bundle_prices_to_panel(prices)
+                if panel.empty:
+                    raise ValueError(f"QuantRocket returned no observations for {year}.")
+                if not panel["date"].between(start_date, end_date).all():
+                    raise ValueError(f"QuantRocket returned observations outside {year}.")
+                panel.to_csv(
+                    output_stream, index=False, header=(year == 2007), date_format="%Y-%m-%d"
+                )
+                year_first, year_last = panel["date"].min(), panel["date"].max()
+                first_date = year_first if first_date is None else min(first_date, year_first)
+                last_date = year_last if last_date is None else max(last_date, year_last)
+                row_count += len(panel)
+                security_ids.update(panel["sid"].astype(str))
+                chunk_summaries.append({
+                    "year": year, "rows": int(len(panel)),
+                    "first_date": str(year_first.date()), "last_date": str(year_last.date()),
+                })
+
+        securities = get_securities(vendors="usstock", fields=MASTER_FIELDS)
+        master = master_to_metadata(securities, security_ids)
         master.to_csv(temporary_metadata, index=False, compression="gzip", date_format="%Y-%m-%d")
         manifest = {
             "source": "QuantRocket US Stock learning bundle",
@@ -123,10 +149,11 @@ def export(output: Path, force: bool = False) -> dict[str, object]:
                 "Latest securities-master snapshot for event labeling only; never use these "
                 "fields as historical signal inputs or to define past universe membership."
             ),
-            "rows": int(len(panel)),
-            "securities": int(panel["sid"].nunique()),
-            "first_date": str(panel["date"].min().date()),
-            "last_date": str(panel["date"].max().date()),
+            "rows": row_count,
+            "securities": len(security_ids),
+            "first_date": str(first_date.date()),
+            "last_date": str(last_date.date()),
+            "yearly_chunks": chunk_summaries,
             "csv_sha256": file_sha256(temporary_panel),
             "limitations": [
                 "Delisted securities are included in the source, but this export does not contain delisting cash or stock consideration.",
