@@ -187,17 +187,50 @@ def simulate(
     start: pd.Timestamp,
 ) -> tuple[pd.Series, pd.Series, float]:
     """Apply close trades after today's return; charge costs on risky traded notional."""
+    equity, net_returns, annual_turnover, _ = _simulate_with_attribution(
+        returns, targets, cost_bps, start, None
+    )
+    return equity, net_returns, annual_turnover
+
+
+def simulate_with_sector_attribution(
+    returns: pd.DataFrame,
+    targets: dict[pd.Timestamp, dict[str, float]],
+    cost_bps: int,
+    start: pd.Timestamp,
+    sector_by_sid: dict[str, str],
+) -> tuple[pd.Series, pd.Series, float, pd.DataFrame]:
+    """Simulate the same strategy and attribute daily net P&L to sectors."""
+    return _simulate_with_attribution(returns, targets, cost_bps, start, sector_by_sid)
+
+
+def _simulate_with_attribution(
+    returns: pd.DataFrame,
+    targets: dict[pd.Timestamp, dict[str, float]],
+    cost_bps: int,
+    start: pd.Timestamp,
+    sector_by_sid: dict[str, str] | None,
+) -> tuple[pd.Series, pd.Series, float, pd.DataFrame]:
+    """Shared portfolio engine; attribution is additive net P&L per initial equity."""
     if cost_bps < 0:
         raise ValueError("Cost must be nonnegative.")
     fee_rate = cost_bps / 10_000.0
     risky_weights: dict[str, float] = {}
     equity = 1.0
     equity_values, net_returns = [], []
+    sector_daily_values: list[dict[str, float]] = []
     gross_traded = 0.0
 
     for date, row in returns.iterrows():
         prior_equity = equity
         asset_returns = row
+        daily_sector_pnl: dict[str, float] = {}
+        if sector_by_sid is not None:
+            for sid, weight in risky_weights.items():
+                sector = sector_by_sid.get(sid, "Unknown")
+                daily_sector_pnl[sector] = daily_sector_pnl.get(sector, 0.0) + (
+                    prior_equity * weight * float(asset_returns.get(sid, 0.0))
+                )
         portfolio_return = sum(
             weight * float(asset_returns.get(sid, 0.0))
             for sid, weight in risky_weights.items()
@@ -226,18 +259,33 @@ def simulate(
             if set(desired).difference(returns.columns):
                 raise ValueError("Target contains a security missing from the return panel.")
             traded = set(risky_weights).union(desired)
-            traded_notional = sum(abs(desired.get(sid, 0.0) - risky_weights.get(sid, 0.0)) for sid in traded)
+            traded_by_sid = {
+                sid: abs(desired.get(sid, 0.0) - risky_weights.get(sid, 0.0))
+                for sid in traded
+            }
+            traded_notional = sum(traded_by_sid.values())
             gross_traded += traded_notional
-            equity *= max(0.0, 1.0 - fee_rate * traded_notional)
+            transaction_cost = equity * fee_rate * traded_notional
+            if sector_by_sid is not None and traded_notional > 0:
+                for sid, amount in traded_by_sid.items():
+                    if amount <= 0:
+                        continue
+                    sector = sector_by_sid.get(sid, "Unknown")
+                    daily_sector_pnl[sector] = daily_sector_pnl.get(sector, 0.0) - (
+                        transaction_cost * amount / traded_notional
+                    )
+            equity = max(0.0, equity - transaction_cost)
             risky_weights = desired
 
         equity_values.append(equity)
         net_returns.append(equity / prior_equity - 1.0 if prior_equity > 0 else 0.0)
+        sector_daily_values.append(daily_sector_pnl)
 
     equity_series = pd.Series(equity_values, index=returns.index, name="equity")
     return_series = pd.Series(net_returns, index=returns.index, name="net_return")
     years = max(len(returns.loc[start:]) / 252.0, 1 / 252.0)
-    return equity_series, return_series, gross_traded / years
+    sector_frame = pd.DataFrame(sector_daily_values, index=returns.index).fillna(0.0)
+    return equity_series, return_series, gross_traded / years, sector_frame
 
 
 def summarize(
@@ -353,21 +401,39 @@ def run_experiment(
     """Compare simple stock momentum with cash, SPY, and equal-weight stocks."""
     close, spy_sid, stock_sids = make_price_matrices(panel, metadata)
     targets, regime, start = build_targets(close, stock_sids, spy_sid, liquidity_panel)
+    sector_by_sid = metadata.set_index(metadata["sid"].astype(str))["sector"].fillna("Unknown").to_dict()
+    sector_by_sid = {
+        sid: (str(sector).strip() or "Unknown") for sid, sector in sector_by_sid.items()
+    }
+    sector_by_sid[spy_sid] = "Market ETF"
     results = []
     daily_results: dict[tuple[str, int, str], pd.Series] = {}
     for scenario in ("zero_recovery", "last_quote"):
         returns = daily_returns(close, metadata, scenario)
         for strategy in STRATEGIES:
             for cost in cost_bps:
-                equity, net_returns, annual_turnover = simulate(
-                    returns, targets[strategy], cost, start
+                equity, net_returns, annual_turnover, sector_pnl = simulate_with_sector_attribution(
+                    returns, targets[strategy], cost, start, sector_by_sid
                 )
                 daily_results[(strategy, cost, scenario)] = net_returns.loc[start:]
+                sector_pnl = sector_pnl.loc[start:]
+                sector_by_year = {
+                    str(int(year)): {
+                        str(sector): float(value)
+                        for sector, value in values.sum().items()
+                    }
+                    for year, values in sector_pnl.groupby(sector_pnl.index.year)
+                }
                 results.append({
                     "strategy": strategy,
                     "cost_bps_per_side": cost,
                     "delisting_scenario": scenario,
                     "annual_gross_traded_notional": annual_turnover,
+                    "sector_net_pnl_contribution_on_initial_equity": {
+                        str(sector): float(value)
+                        for sector, value in sector_pnl.sum().items()
+                    },
+                    "sector_net_pnl_by_year_on_initial_equity": sector_by_year,
                     **summarize(equity, net_returns, regime, start),
                 })
     spy_results = {
@@ -418,6 +484,7 @@ def run_experiment(
         "limitations": [
             "Every historical year is development data; none is an untouched holdout.",
             "The current securities-master snapshot classifies security types and delisting events; it is not point-in-time classification data.",
+            "Sector P&L attribution uses current master labels and is descriptive; historical sector classifications are not available in this sample.",
             "Zero recovery after the last price is a conservative stress, not an observed payout; last-quote carry is an optimistic assumption, not an upper bound on merger consideration.",
             "Fixed costs omit market impact, taxes, cash yield, and capacity constraints beyond an adjusted-dollar-volume proxy screen.",
             "Adjusted close-to-close prices approximate total returns and assume trades can execute at the close before costs.",
