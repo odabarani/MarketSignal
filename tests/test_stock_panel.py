@@ -206,7 +206,10 @@ def test_export_writes_panel_master_snapshot_and_hash_manifest(tmp_path, monkeyp
     assert manifest["monthly_liquidity_rows"] == 5
     assert manifest["monthly_liquidity_sha256"]
     assert json.loads(manifest_path.read_text())["security_metadata_sha256"]
-    assert pd.read_csv(output, compression="gzip").sid.nunique() == 1
+    exported_panel = pd.read_csv(output, compression="gzip")
+    assert exported_panel.sid.nunique() == 1
+    year_end_closes = exported_panel.groupby(exported_panel.date.str[:4]).tail(1).close.tolist()
+    assert year_end_closes == pytest.approx([10.0, 11.0, 12.1, 13.31, 14.641])
     assert pd.read_csv(metadata_path, compression="gzip").loc[0, "sid"] == "SID-A"
     assert pd.read_csv(liquidity_path, compression="gzip").date.nunique() == 5
     with pytest.raises(FileExistsError, match="Refusing to overwrite"):
