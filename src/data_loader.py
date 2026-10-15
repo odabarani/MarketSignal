@@ -81,12 +81,29 @@ def get_research_market_data(tickers, end=None):
     benchmark = _download_close("SPY", auto_adjust=True, end=end)
     volatility = _download_close("^VIX", end=end)["Close"].rename("VIX")
     assets = {symbol: _download_close(symbol, auto_adjust=True, end=end) for symbol in symbols}
+    benchmark_valid = benchmark.dropna(subset=["Open", "High", "Low", "Close", "Volume"])
+    if benchmark_valid.empty:
+        raise ValueError("No complete SPY session was returned for the research panel.")
+    latest_session = benchmark_valid.index.max()
     valid_ranges = {}
     for symbol, frame in assets.items():
         valid = frame.dropna(subset=["Open", "High", "Low", "Close", "Volume"])
         if valid.empty:
             raise ValueError(f"No complete adjusted price history was returned for {symbol}.")
         valid_ranges[symbol] = (valid.index.min(), valid.index.max())
+    lagging = {
+        symbol: last for symbol, (_, last) in valid_ranges.items()
+        if last < latest_session
+    }
+    if lagging:
+        details = ", ".join(
+            f"{symbol} ({pd.Timestamp(last).date()})"
+            for symbol, last in sorted(lagging.items())
+        )
+        raise ValueError(
+            f"Incomplete research bars: SPY has data through {latest_session.date()}, "
+            f"but these symbols stop earlier: {details}."
+        )
     common_start = max(start for start, _ in valid_ranges.values())
     common_end = min(end for _, end in valid_ranges.values())
     calendar = benchmark.index[(benchmark.index >= common_start) & (benchmark.index <= common_end)]
