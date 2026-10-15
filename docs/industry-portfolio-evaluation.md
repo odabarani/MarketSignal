@@ -104,3 +104,29 @@ python industry_momentum_risk_experiment.py
 ```
 
 The output is saved as `data/industry_momentum_risk_development.json`.
+
+## Development-only momentum-ranking check
+
+A fixed follow-up ranked positive 12–1 momentum by its return divided by
+trailing 252-session volatility. It compared broad-universe risk sizing with
+the selected basket's own risk estimate against the existing raw-momentum
+rules.
+
+At 30 bps per side, volatility-adjusted ranking with the original broad-risk
+estimate returned **9.46% annualized**, with **-14.45% maximum drawdown** and a
+0.67 Sharpe versus cash. Raw momentum returned **9.67%**, with **-14.65%
+drawdown** and a 0.66 Sharpe. At 50 bps, the adjusted version returned 8.78%
+versus 9.00%. Pairing adjusted ranking with selected-basket sizing returned
+9.18% and had a -13.58% drawdown; it did not improve on the simpler selected-
+basket sizing test.
+
+The change slightly improved risk-adjusted results in this development sample,
+but did not improve return or meaningfully reduce drawdown. It is not promoted.
+The report includes the fixed cost, yearly and market-regime comparisons and
+can be reproduced with:
+
+```bash
+python industry_momentum_rank_experiment.py
+```
+
+The output is saved as `data/industry_momentum_rank_development.json`.
