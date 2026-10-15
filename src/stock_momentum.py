@@ -19,6 +19,9 @@ TOP_FRACTION = 0.10
 TARGET_VOLATILITY = 0.10
 RESEARCH_DRAWDOWN_BUDGET = 0.20
 COSTS_BPS = (15, 30, 50)
+BOOTSTRAP_BLOCK_SESSIONS = 20
+BOOTSTRAP_RESAMPLES = 1_000
+BOOTSTRAP_SEED = 20261015
 STRATEGIES = ("Cash", "SPY buy-and-hold", "Equal-weight stocks",
               "12-1 momentum", "12-1 momentum with SPY trend",
               "12-1 momentum with 10% volatility target")
@@ -283,6 +286,62 @@ def summarize(
     }
 
 
+def block_bootstrap_excess_return(
+    strategy_returns: pd.Series,
+    benchmark_returns: pd.Series,
+    *,
+    block_sessions: int = BOOTSTRAP_BLOCK_SESSIONS,
+    resamples: int = BOOTSTRAP_RESAMPLES,
+    seed: int = BOOTSTRAP_SEED,
+) -> dict[str, Any]:
+    """Describe uncertainty in same-period compounded excess return.
+
+    Paired circular blocks preserve short-run dependence and keep strategy and
+    benchmark dates together. This resamples the observed history; it is not a
+    predictive interval for future returns.
+    """
+    if block_sessions < 1 or resamples < 1:
+        raise ValueError("Block length and resample count must be positive.")
+    paired = pd.concat(
+        [strategy_returns.rename("strategy"), benchmark_returns.rename("benchmark")],
+        axis=1,
+        join="inner",
+    ).dropna()
+    if paired.empty:
+        raise ValueError("Strategy and benchmark returns have no shared observations.")
+    values = paired.to_numpy(dtype=float)
+    if not np.isfinite(values).all() or (values < -1).any():
+        raise ValueError("Bootstrap returns must be finite and no less than -100%.")
+
+    n_sessions = len(values)
+    block_sessions = min(block_sessions, n_sessions)
+    blocks_per_sample = math.ceil(n_sessions / block_sessions)
+    rng = np.random.default_rng(seed)
+    offsets = np.arange(block_sessions)
+    excess = np.empty(resamples, dtype=float)
+    for sample in range(resamples):
+        starts = rng.integers(0, n_sessions, size=blocks_per_sample)
+        indexes = ((starts[:, None] + offsets) % n_sessions).ravel()[:n_sessions]
+        sampled = values[indexes]
+        strategy_total = float(np.prod(1.0 + sampled[:, 0]) - 1.0)
+        benchmark_total = float(np.prod(1.0 + sampled[:, 1]) - 1.0)
+        excess[sample] = strategy_total - benchmark_total
+
+    low, median, high = np.quantile(excess, [0.025, 0.5, 0.975])
+    return {
+        "sessions": n_sessions,
+        "block_sessions": block_sessions,
+        "resamples": resamples,
+        "seed": seed,
+        "median_excess_net_return": float(median),
+        "percentile_range_95": [float(low), float(high)],
+        "interpretation": (
+            "Descriptive resampling range from the observed historical period; "
+            "not a predictive interval or evidence of future outperformance."
+        ),
+    }
+
+
 def run_experiment(
     panel: pd.DataFrame,
     metadata: pd.DataFrame,
@@ -293,6 +352,7 @@ def run_experiment(
     close, spy_sid, stock_sids = make_price_matrices(panel, metadata)
     targets, regime, start = build_targets(close, stock_sids, spy_sid, liquidity_panel)
     results = []
+    daily_results: dict[tuple[str, int, str], pd.Series] = {}
     for scenario in ("zero_recovery", "last_quote"):
         returns = daily_returns(close, metadata, scenario)
         for strategy in STRATEGIES:
@@ -300,6 +360,7 @@ def run_experiment(
                 equity, net_returns, annual_turnover = simulate(
                     returns, targets[strategy], cost, start
                 )
+                daily_results[(strategy, cost, scenario)] = net_returns.loc[start:]
                 results.append({
                     "strategy": strategy,
                     "cost_bps_per_side": cost,
@@ -315,6 +376,10 @@ def run_experiment(
         spy = spy_results[(row["cost_bps_per_side"], row["delisting_scenario"])]
         row["excess_net_return_vs_spy"] = row["net_return"] - spy["net_return"]
         row["excess_max_drawdown_vs_spy"] = row["max_drawdown"] - spy["max_drawdown"]
+        row["block_bootstrap_excess_net_return_vs_spy"] = block_bootstrap_excess_return(
+            daily_results[(row["strategy"], row["cost_bps_per_side"], row["delisting_scenario"])],
+            daily_results[("SPY buy-and-hold", row["cost_bps_per_side"], row["delisting_scenario"])],
+        )
         row["within_research_drawdown_budget"] = (
             row["max_drawdown"] >= -RESEARCH_DRAWDOWN_BUDGET
         )
@@ -337,6 +402,11 @@ def run_experiment(
             "rebalancing": "Monthly signal at close, trade at next session close.",
             "universe": "Common Stock and Depositary Receipt per latest master snapshot; no active-only filter.",
             "execution_costs_bps_per_side": list(cost_bps),
+            "excess_return_uncertainty": (
+                "Paired circular block bootstrap of daily net returns, using 20-session "
+                "blocks, 1,000 resamples, and a fixed seed. Its interval describes "
+                "resampled observed history and is not predictive."
+            ),
         },
         "universe": {
             "spy_sid": spy_sid,
