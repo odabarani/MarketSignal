@@ -7,7 +7,7 @@ python stock_momentum_research.py
 ```
 
 The runner checks SPY's benchmark dates and stops if any year is missing or
-has fewer than 220 sessions or does not span most of the year. This prevents a
+has fewer than 240 sessions or does not span most of the year. This prevents a
 partial export from being reported as the full five-year comparison.
 
 The report is saved to `data/stock_momentum_development.json`. It compares cash,
