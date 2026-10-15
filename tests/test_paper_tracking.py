@@ -196,6 +196,7 @@ def test_late_or_stale_latest_session_does_not_create_a_backdated_signal(
 
     output = capsys.readouterr().out
     assert "Latest complete session: 2026-10-13" in output
-    assert "wait until after the latest session close" in output
+    assert "latest complete session (2026-10-13) is not today (2026-10-14)" in output
+    assert "refusing to backdate a next-open signal" in output
     assert not ledger.exists()
     assert not snapshots.exists()

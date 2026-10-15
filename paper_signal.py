@@ -334,6 +334,11 @@ def main(argv=None):
     print(f"Mature forecasts reconciled this run: {reconciled}")
     if created:
         print("New five-session signal committed after the session close.")
+    elif due and as_of.date() != eastern.date():
+        print(
+            f"No signal committed: latest complete session ({as_of.date()}) is not "
+            f"today ({eastern.date()}); refusing to backdate a next-open signal."
+        )
     elif due and not commit_window:
         print("No signal committed; wait until after the latest session close to preserve next-open timing.")
     else:
