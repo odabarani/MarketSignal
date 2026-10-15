@@ -12,7 +12,7 @@ from src.stock_momentum import (
     volatility_exposure,
     block_bootstrap_excess_return,
     simulate_with_sector_attribution,
-    target_entry_capacity,
+    target_order_capacity,
 )
 
 
@@ -92,6 +92,14 @@ def test_simulator_charges_turnover_and_delays_returns_until_after_close_trade()
     assert equity.loc[dates[2]] == pytest.approx(0.995 * 1.1)
 
 
+@pytest.mark.parametrize("invalid_weight", [-0.1, float("nan")])
+def test_simulator_rejects_negative_or_nan_target_weights(invalid_weight):
+    date = pd.Timestamp("2007-01-02")
+    returns = pd.DataFrame({"STOCK-A": [0.0]}, index=[date])
+    with pytest.raises(ValueError, match="finite, nonnegative"):
+        simulate(returns, {date: {"STOCK-A": invalid_weight}}, 30, date)
+
+
 def test_sector_attribution_includes_net_trading_costs_and_sums_to_portfolio_return():
     dates = pd.to_datetime(["2007-01-02", "2007-01-03", "2007-01-04"])
     returns = pd.DataFrame({"A": [0.0, 0.10, 0.0], "B": [0.0, -0.10, -0.02]}, index=dates)
@@ -156,24 +164,27 @@ def test_block_bootstrap_rejects_misaligned_or_incomplete_daily_returns():
         block_bootstrap_excess_return(benchmark, incomplete)
 
 
-def test_target_entry_capacity_uses_signal_date_adv_and_target_weight():
-    dates = pd.bdate_range("2007-01-02", periods=3)
-    close = pd.DataFrame({"A": [10.0, 11.0, 12.0]}, index=dates)
+def test_target_order_capacity_uses_drifted_turnover_and_both_sides():
+    dates = pd.bdate_range("2007-01-02", periods=4)
+    returns = pd.DataFrame({"A": [0.0, 0.0, 0.10, 0.0], "B": [0.0, 0.0, -0.10, 0.0]}, index=dates)
     liquidity = pd.DataFrame([
-        {"sid": "A", "date": dates[1], "average_adjusted_dollar_volume": 100_000.0},
-        {"sid": "B", "date": dates[1], "average_adjusted_dollar_volume": 1_000_000.0},
+        {"sid": "A", "date": dates[0], "average_adjusted_dollar_volume": 100_000.0},
+        {"sid": "B", "date": dates[0], "average_adjusted_dollar_volume": 1_000_000.0},
+        {"sid": "A", "date": dates[2], "average_adjusted_dollar_volume": 100_000.0},
+        {"sid": "B", "date": dates[2], "average_adjusted_dollar_volume": 1_000_000.0},
     ])
-    report = target_entry_capacity(
-        close,
-        {"test": {dates[2]: {"A": 0.5, "B": 0.5}}},
+    report = target_order_capacity(
+        returns,
+        {"test": {dates[1]: {"A": 0.5, "B": 0.5}, dates[3]: {"A": 0.0, "B": 1.0}}},
         liquidity,
     )["test"]["participation_scenarios"]
-    assert report["1.000%"]["minimum_portfolio_size_proxy"] == pytest.approx(2_000.0)
-    assert report["0.500%"]["minimum_portfolio_size_proxy"] == pytest.approx(1_000.0)
+    assert report["1.000%"]["rebalances"] == 2
+    assert report["1.000%"]["minimum_portfolio_size_proxy"] == pytest.approx(1000 / 0.55)
+    assert report["0.500%"]["minimum_portfolio_size_proxy"] == pytest.approx(500 / 0.55)
     with pytest.raises(ValueError, match="liquidity is missing"):
-        target_entry_capacity(
-            close,
-            {"test": {dates[2]: {"A": 0.5, "B": 0.5}}},
+        target_order_capacity(
+            returns,
+            {"test": {dates[1]: {"A": 0.5, "B": 0.5}, dates[3]: {"A": 0.0, "B": 1.0}}},
             liquidity.iloc[[0]],
         )
 
@@ -222,9 +233,9 @@ def test_full_experiment_is_serializable_and_compares_all_fixed_baselines():
     assert all("within_research_drawdown_budget" in row for row in report["results"])
     assert all("block_bootstrap_excess_net_return_vs_spy" in row for row in report["results"])
     assert all("sector_net_pnl_contribution_on_initial_equity" in row for row in report["results"])
-    assert "target_entry_capacity_screen" in report
+    assert "target_order_capacity_screen" in report
     assert "not a market-impact or fill model" in " ".join(
-        report["target_entry_capacity_screen"]["limitations"]
+        report["target_order_capacity_screen"]["limitations"]
     )
     for row in report["results"]:
         sector_contribution = sum(row["sector_net_pnl_contribution_on_initial_equity"].values())
