@@ -79,3 +79,28 @@ python industry_trend_filter_experiment.py
 This is a development diagnostic, not a new holdout or evidence of future
 performance. Its output is saved as
 `data/industry_trend_filter_development.json`.
+
+## Development-only risk-sizing check
+
+The original momentum volatility target estimates risk from an equal-weight
+portfolio of all 49 industries, even though it holds only the 10 strongest
+industries. A second fixed comparison sized the same momentum basket using its
+own trailing 20-session equal-weight volatility. Both rules used the same
+selection, 5% target, monthly schedule, and two-session execution lag.
+
+At 30 bps per side, selected-basket sizing reduced realized annualized
+volatility from **7.05% to 5.89%** and maximum drawdown from **-14.65% to
+-11.80%**. Annualized return fell from **9.67% to 9.13%**; Sharpe versus cash
+rose from 0.66 to 0.69. At 50 bps, return was 8.53% versus 9.00%, and drawdown
+was -11.91% versus -14.77%.
+
+This fixes a mismatch in the risk estimate, but the comparison still uses
+reused development dates. It does not prove the alternative will control losses
+or improve live returns, so neither historical result is promoted. The report
+includes yearly and market-regime results and can be reproduced with:
+
+```bash
+python industry_momentum_risk_experiment.py
+```
+
+The output is saved as `data/industry_momentum_risk_development.json`.
