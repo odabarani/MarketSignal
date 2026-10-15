@@ -190,12 +190,19 @@ def test_export_writes_panel_master_snapshot_and_hash_manifest(tmp_path, monkeyp
     quantrocket = types.ModuleType("quantrocket")
     quantrocket.get_prices = get_prices
     master = types.ModuleType("quantrocket.master")
-    master.get_securities = lambda *args, **kwargs: securities
+    master_calls = []
+
+    def get_securities(*args, **kwargs):
+        master_calls.append(kwargs)
+        return securities
+
+    master.get_securities = get_securities
     monkeypatch.setitem(sys.modules, "quantrocket", quantrocket)
     monkeypatch.setitem(sys.modules, "quantrocket.master", master)
 
     output = tmp_path / "sample.csv.gz"
     manifest = export(output)
+    assert master_calls[0]["exclude_delisted"] is False
     metadata_path = tmp_path / "sample_security_master.csv.gz"
     liquidity_path = tmp_path / "sample_monthly_liquidity.csv.gz"
     manifest_path = tmp_path / "sample.csv.gz.manifest.json"

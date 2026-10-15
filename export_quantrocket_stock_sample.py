@@ -231,7 +231,9 @@ def export(output: Path, force: bool = False) -> dict[str, object]:
             temporary_liquidity, index=False, compression="gzip", date_format="%Y-%m-%d"
         )
 
-        securities = get_securities(vendors="usstock", fields=MASTER_FIELDS)
+        securities = get_securities(
+            vendors="usstock", fields=MASTER_FIELDS, exclude_delisted=False
+        )
         master = master_to_metadata(securities, security_ids)
         master.to_csv(temporary_metadata, index=False, compression="gzip", date_format="%Y-%m-%d")
         manifest = {
