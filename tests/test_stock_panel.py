@@ -1,8 +1,15 @@
 import pandas as pd
 import pytest
+import json
+import sys
+import types
 
-from export_quantrocket_stock_sample import bundle_prices_to_panel
-from src.stock_panel import load_stock_panel, validate_stock_panel
+from export_quantrocket_stock_sample import bundle_prices_to_panel, export
+from src.stock_panel import (
+    load_stock_panel,
+    validate_security_metadata,
+    validate_stock_panel,
+)
 
 
 def valid_panel():
@@ -70,3 +77,60 @@ def test_quantrocket_export_drops_unobserved_security_dates():
     prices = pd.DataFrame({"SID-A": [10.0, 100], "SID-B": [float("nan"), float("nan")]}, index=index)
     panel = bundle_prices_to_panel(prices)
     assert panel.sid.tolist() == ["SID-A"]
+
+
+def test_quantrocket_master_export_preserves_delisting_labels_by_sid():
+    from export_quantrocket_stock_sample import master_to_metadata
+
+    securities = pd.DataFrame({
+        "usstock_DateDelisted": ["2009-03-12", None],
+        "usstock_FirstPriceDate": ["2007-01-03", "2007-01-03"],
+        "usstock_LastPriceDate": ["2009-03-10", "2011-12-30"],
+        "usstock_SecurityType2": ["Common Stock", "Common Stock"],
+        "usstock_Sector": ["Financials", "Technology"],
+    }, index=pd.Index(["SID-DELISTED", "SID-ACTIVE"], name="Sid"))
+    result = master_to_metadata(securities, {"SID-DELISTED", "SID-ACTIVE"})
+    row = result.loc[result.sid == "SID-DELISTED"].iloc[0]
+    assert row.date_delisted == pd.Timestamp("2009-03-12")
+    assert row.sector == "Financials"
+
+
+def test_security_metadata_rejects_missing_panel_sid():
+    metadata = pd.DataFrame({
+        "sid": ["SID-A"], "date_delisted": [None],
+        "first_price_date": ["2007-01-03"], "last_price_date": [None],
+        "security_type": ["Common Stock"], "sector": ["Technology"],
+    })
+    with pytest.raises(ValueError, match="missing 1 panel Sids"):
+        validate_security_metadata(metadata, {"SID-A", "SID-B"})
+
+
+def test_export_writes_panel_master_snapshot_and_hash_manifest(tmp_path, monkeypatch):
+    index = pd.MultiIndex.from_tuples(
+        [("Close", "2007-01-03"), ("Volume", "2007-01-03")], names=["Field", "Date"]
+    )
+    prices = pd.DataFrame({"SID-A": [10.0, 100]}, index=index)
+    securities = pd.DataFrame({
+        "usstock_DateDelisted": [None],
+        "usstock_FirstPriceDate": ["2007-01-03"],
+        "usstock_LastPriceDate": ["2011-12-30"],
+        "usstock_SecurityType2": ["Common Stock"],
+        "usstock_Sector": ["Technology"],
+    }, index=pd.Index(["SID-A"], name="Sid"))
+    quantrocket = types.ModuleType("quantrocket")
+    quantrocket.get_prices = lambda *args, **kwargs: prices
+    master = types.ModuleType("quantrocket.master")
+    master.get_securities = lambda *args, **kwargs: securities
+    monkeypatch.setitem(sys.modules, "quantrocket", quantrocket)
+    monkeypatch.setitem(sys.modules, "quantrocket.master", master)
+
+    output = tmp_path / "sample.csv.gz"
+    manifest = export(output)
+    metadata_path = tmp_path / "sample_security_master.csv.gz"
+    manifest_path = tmp_path / "sample.csv.gz.manifest.json"
+    assert output.exists() and metadata_path.exists() and manifest_path.exists()
+    assert manifest["security_metadata_file"] == metadata_path.name
+    assert json.loads(manifest_path.read_text())["security_metadata_sha256"]
+    assert pd.read_csv(metadata_path).loc[0, "sid"] == "SID-A"
+    with pytest.raises(FileExistsError, match="Refusing to overwrite"):
+        export(output)

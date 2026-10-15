@@ -26,10 +26,14 @@ environment can import them, and run:
 python export_quantrocket_stock_sample.py
 ```
 
-The exporter writes `data/research_inputs/quantrocket_usstock_learn_2007_2011.csv.gz`
-plus a JSON manifest with date coverage, security count, source details, and a
-SHA-256 file hash. It refuses to overwrite an existing export unless `--force`
-is supplied. Generated data is ignored by Git.
+The exporter writes `data/research_inputs/quantrocket_usstock_learn_2007_2011.csv.gz`,
+a companion securities-master snapshot, and a JSON manifest with date coverage,
+security counts, source details, and SHA-256 hashes. The snapshot includes
+delisting dates, first and last price dates, security type, and sector. These
+are current labels for research and event checks only; do not use them as
+historical signal inputs or to decide which stocks were eligible in the past.
+The exporter refuses to overwrite existing files unless `--force` is supplied.
+Generated data is ignored by Git.
 
 ## What the export means
 
@@ -38,9 +42,9 @@ stable security identifier, so ticker changes do not join two companies by
 mistake. The bundle adjusts prices as of the end of the query; use price ratios
 and returns rather than historical nominal price levels as model inputs.
 
-The source includes delisted securities, but the export does not include cash or
-stock consideration paid at delisting. A last observed quote is not necessarily
-the investor's final value. Any stock backtest must expose and justify its
+The source includes delisted securities, but neither file includes cash or stock
+consideration paid at delisting. A last observed quote is not necessarily the
+investor's final value. Any stock backtest must expose and justify its
 terminal-price policy, and must not quietly translate missing prices into
 ordinary returns or a total loss. The five-year sample is useful for developing
 and falsifying ideas, but it is not a future holdout and cannot establish that a

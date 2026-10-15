@@ -32,11 +32,13 @@ No candidate has earned a live-trading recommendation yet.
   also underperformed the market and overlaps previously inspected dates.
 - **Public-data limit:** a free QuantRocket account offers all-stock daily prices
   for 2007–2011, including securities that later delisted. The repository now
-  has an exporter and strict panel checks for this sample, but no sample has
-  been downloaded or tested here yet. The export also lacks delisting cash or
-  stock consideration, so a missing later price cannot safely be treated as a
-  complete delisting return. Until that limitation is resolved, historical
-  stock results must be labeled incomplete. See
+  has an exporter, strict panel checks, and current master-file labels for
+  delisting dates and last observed prices, but no sample has been downloaded
+  or tested here yet. Those latest master labels are for event review only; they
+  must not define historical membership or model inputs. The export lacks
+  delisting cash or stock consideration, so a missing later price cannot safely
+  be treated as a complete delisting return. Until that limitation is resolved,
+  historical stock results must be labeled incomplete. See
   [the stock sample setup](stock-sample.md).
 - **Forward evidence:** the paper tracker records decisions before outcomes and
   has one signal awaiting its exit data. This is the only current source of
