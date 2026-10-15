@@ -123,6 +123,19 @@ def test_identical_strategy_and_benchmark_have_zero_bootstrap_excess():
     assert result["percentile_range_95"] == pytest.approx([0.0, 0.0])
 
 
+def test_block_bootstrap_rejects_misaligned_or_incomplete_daily_returns():
+    dates = pd.bdate_range("2020-01-01", periods=3)
+    benchmark = pd.Series([0.01, -0.01, 0.0], index=dates)
+    with pytest.raises(ValueError, match="identical dates"):
+        block_bootstrap_excess_return(
+            pd.Series([0.01, -0.01], index=dates[:2]), benchmark
+        )
+    incomplete = benchmark.copy()
+    incomplete.iloc[1] = np.nan
+    with pytest.raises(ValueError, match="finite"):
+        block_bootstrap_excess_return(benchmark, incomplete)
+
+
 def test_volatility_sizing_is_capped_and_requires_a_nonzero_history():
     low_vol = pd.Series(np.tile([-0.002, 0.002], 10))
     assert volatility_exposure(low_vol) == 1.0
