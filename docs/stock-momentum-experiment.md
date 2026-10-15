@@ -15,9 +15,10 @@ positive 12-month returns after skipping the latest month.
 
 Eligibility uses a current close, at least 200 observed prices over the previous
 252 market sessions, and at least $5 million in average daily dollar volume over
-the previous 20 sessions. Eligible securities are Common Stock or Depositary
-Receipts according to the latest QuantRocket master snapshot. This static type
-label can be revised and is not a point-in-time classification.
+the previous 20 sessions. Liquidity is queried with each signal date as the
+query end date. Eligible securities are Common Stock or Depositary Receipts
+according to the latest QuantRocket master snapshot. This static type label can
+be revised and is not a point-in-time classification.
 
 Signals are formed at month-end close and traded at the next session's close.
 Performance includes 15, 30, and 50 basis points per side, net compounded
@@ -27,6 +28,11 @@ delisting cases: zero recovery after the last observed price as a conservative
 stress, and carrying the last quote as an optimistic assumption. Neither is an
 observed payout, and the last quote is not an upper bound on merger proceeds;
 the spread between scenarios shows how much missing recovery data matters.
+
+Each result also shows excess net return and excess drawdown versus SPY on the
+same dates, plus whether it stayed within the project's provisional 20%
+research drawdown budget. Passing that historical screen is not a guarantee or
+a promotion decision.
 
 This is a historical development comparison, not a hidden test. The five-year
 sample has already been examined at the broader market level, so its results

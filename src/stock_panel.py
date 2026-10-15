@@ -9,6 +9,7 @@ import pandas as pd
 import numpy as np
 
 STOCK_PANEL_COLUMNS = ["sid", "date", "close", "volume"]
+LIQUIDITY_PANEL_COLUMNS = ["sid", "date", "average_dollar_volume"]
 SECURITY_METADATA_COLUMNS = [
     "sid", "symbol", "date_delisted", "first_price_date", "last_price_date",
     "security_type", "sector",
@@ -47,6 +48,34 @@ def validate_stock_panel(panel: pd.DataFrame) -> pd.DataFrame:
     if (result["volume"] < 0).any():
         raise ValueError("Volume cannot be negative.")
 
+    return result.sort_values(["date", "sid"], kind="stable").reset_index(drop=True)
+
+
+def validate_liquidity_panel(panel: pd.DataFrame) -> pd.DataFrame:
+    """Validate monthly, point-in-time average dollar-volume observations."""
+    missing = set(LIQUIDITY_PANEL_COLUMNS).difference(panel.columns)
+    if missing:
+        raise ValueError(f"Liquidity panel is missing required columns: {sorted(missing)}")
+    result = panel.loc[:, LIQUIDITY_PANEL_COLUMNS].copy()
+    result["sid"] = result["sid"].astype("string").str.strip()
+    if result["sid"].isna().any() or result["sid"].eq("").any():
+        raise ValueError("Liquidity panel contains a missing or blank Sid.")
+    result["date"] = pd.to_datetime(result["date"], errors="coerce")
+    if result["date"].isna().any():
+        raise ValueError("Liquidity panel contains an invalid date.")
+    if ((result["date"] < LEARNING_SAMPLE_START) |
+            (result["date"] > LEARNING_SAMPLE_END)).any():
+        raise ValueError("Liquidity dates must fall within the 2007–2011 learning sample.")
+    if result.duplicated(["sid", "date"]).any():
+        raise ValueError("Liquidity panel contains duplicate Sid/date observations.")
+    result["average_dollar_volume"] = pd.to_numeric(
+        result["average_dollar_volume"], errors="coerce"
+    )
+    values = result["average_dollar_volume"].to_numpy(dtype=float)
+    if not np.isfinite(values).all():
+        raise ValueError("Liquidity panel contains a missing or non-finite average dollar volume.")
+    if (values < 0).any():
+        raise ValueError("Average dollar volume cannot be negative.")
     return result.sort_values(["date", "sid"], kind="stable").reset_index(drop=True)
 
 
@@ -114,4 +143,18 @@ def load_security_metadata(
         "file": path.name,
         "sha256": file_sha256(path),
         "rows": int(len(metadata)),
+    }
+
+
+def load_liquidity_panel(path: str | Path) -> tuple[pd.DataFrame, dict[str, object]]:
+    """Load and hash the point-in-time monthly liquidity export."""
+    path = Path(path)
+    panel = validate_liquidity_panel(pd.read_csv(path, compression="infer"))
+    return panel, {
+        "file": path.name,
+        "sha256": file_sha256(path),
+        "rows": int(len(panel)),
+        "securities": int(panel["sid"].nunique()),
+        "first_date": str(panel["date"].min().date()),
+        "last_date": str(panel["date"].max().date()),
     }

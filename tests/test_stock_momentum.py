@@ -25,6 +25,15 @@ def metadata_rows():
     })
 
 
+def monthly_liquidity(dates, sids, value=10_000_000.0):
+    dates = pd.DatetimeIndex(dates)
+    decisions = pd.Series(dates, index=dates).groupby(dates.to_period("M")).last().tolist()
+    return pd.DataFrame([
+        {"sid": sid, "date": date, "average_dollar_volume": value}
+        for date in decisions for sid in sids
+    ])
+
+
 def test_matrices_resolve_spy_and_exclude_etf_from_stock_universe():
     panel = pd.DataFrame({
         "sid": ["SPY-SID", "STOCK-A", "STOCK-B"],
@@ -32,11 +41,10 @@ def test_matrices_resolve_spy_and_exclude_etf_from_stock_universe():
         "close": [100.0, 10.0, 20.0],
         "volume": [1000, 1000, 1000],
     })
-    close, volume, spy, stocks = make_price_matrices(panel, metadata_rows())
+    close, spy, stocks = make_price_matrices(panel, metadata_rows())
     assert spy == "SPY-SID"
     assert stocks == ["STOCK-A", "STOCK-B"]
     assert close.loc[pd.Timestamp("2007-01-02"), spy] == 100
-    assert volume.loc[pd.Timestamp("2007-01-02"), "STOCK-A"] == 1000
 
 
 def test_monthly_targets_use_only_point_in_time_close_and_liquid_history():
@@ -46,8 +54,10 @@ def test_monthly_targets_use_only_point_in_time_close_and_liquid_history():
         "STOCK-A": np.linspace(10, 30, len(dates)),
         "STOCK-B": np.linspace(20, 19, len(dates)),
     }, index=dates)
-    volume = pd.DataFrame(1_000_000.0, index=dates, columns=close.columns)
-    targets, regime, start = build_targets(close, volume, ["STOCK-A", "STOCK-B"], "SPY-SID")
+    liquidity = monthly_liquidity(dates, ["STOCK-A", "STOCK-B"])
+    targets, regime, start = build_targets(
+        close, ["STOCK-A", "STOCK-B"], "SPY-SID", liquidity
+    )
     assert targets["12-1 momentum"]
     assert all(start <= date for date in targets["12-1 momentum"])
     assert all("SPY-SID" not in basket for basket in targets["Equal-weight stocks"].values())
@@ -120,12 +130,16 @@ def test_full_experiment_is_serializable_and_compares_all_fixed_baselines():
         ]
     ], ignore_index=True)
     metadata = metadata_rows()
-    report = run_experiment(panel, metadata, cost_bps=(30,))
+    liquidity = monthly_liquidity(dates, ["STOCK-A", "STOCK-B"])
+    report = run_experiment(panel, metadata, liquidity, cost_bps=(30,))
     assert report["phase"] == "historical_development_only"
     assert len(report["results"]) == 12
     assert {row["strategy"] for row in report["results"]} == {
         "Cash", "SPY buy-and-hold", "Equal-weight stocks", "12-1 momentum",
         "12-1 momentum with SPY trend", "12-1 momentum with 10% volatility target",
     }
+    spy = next(row for row in report["results"] if row["strategy"] == "SPY buy-and-hold")
+    assert spy["excess_net_return_vs_spy"] == pytest.approx(0.0)
+    assert all("within_research_drawdown_budget" in row for row in report["results"])
     import json
     json.dumps(report, allow_nan=False)

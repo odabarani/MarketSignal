@@ -4,9 +4,15 @@ import json
 import sys
 import types
 
-from export_quantrocket_stock_sample import bundle_prices_to_panel, export
+from export_quantrocket_stock_sample import (
+    bundle_prices_to_panel,
+    export,
+    link_adjusted_price_chunk,
+    point_in_time_monthly_liquidity,
+)
 from src.stock_panel import (
     load_stock_panel,
+    validate_liquidity_panel,
     validate_security_metadata,
     validate_stock_panel,
 )
@@ -106,13 +112,72 @@ def test_security_metadata_rejects_missing_panel_sid():
         validate_security_metadata(metadata, {"SID-A", "SID-B"})
 
 
+def test_liquidity_panel_rejects_duplicate_or_invalid_observations():
+    row = {"sid": "SID-A", "date": "2007-01-03", "average_dollar_volume": 10_000_000}
+    valid = validate_liquidity_panel(pd.DataFrame([row]))
+    assert valid.loc[0, "average_dollar_volume"] == 10_000_000
+    with pytest.raises(ValueError, match="duplicate"):
+        validate_liquidity_panel(pd.DataFrame([row, row]))
+    with pytest.raises(ValueError, match="non-finite"):
+        validate_liquidity_panel(pd.DataFrame([{**row, "average_dollar_volume": float("inf")}]))
+
+
+def test_monthly_liquidity_query_ends_on_signal_date():
+    decision = pd.Timestamp("2007-02-01")
+    dates = pd.bdate_range(end=decision, periods=20)
+    index = pd.MultiIndex.from_tuples(
+        [(field, date) for date in dates for field in ("Close", "Volume")],
+        names=["Field", "Date"],
+    )
+    prices = pd.DataFrame({
+        "SID-A": [value for _ in dates for value in (10.0, 1_000_000)]
+    }, index=index)
+    calls = []
+
+    def get_prices(*args, **kwargs):
+        calls.append(kwargs)
+        return prices
+
+    result = point_in_time_monthly_liquidity(get_prices, [decision])
+    assert calls[0]["end_date"] == "2007-02-01"
+    assert result.loc[0, "average_dollar_volume"] == 10_000_000
+
+
+def test_yearly_adjustment_basis_is_linked_at_the_boundary():
+    prior_date, current_date = pd.Timestamp("2007-12-31"), pd.Timestamp("2008-12-31")
+    previous = pd.DataFrame({"sid": ["SID-A"], "date": [prior_date], "close": [100.0], "volume": [1000]})
+    current = pd.DataFrame({"sid": ["SID-A"], "date": [current_date], "close": [40.0], "volume": [1000]})
+    index = pd.MultiIndex.from_tuples(
+        [("Close", prior_date), ("Close", current_date)], names=["Field", "Date"]
+    )
+    bridge = pd.DataFrame({"SID-A": [50.0, 55.0]}, index=index)
+    linked = link_adjusted_price_chunk(previous, current, bridge)
+    assert linked.loc[0, "close"] == pytest.approx(110.0)
+
+
 def test_export_writes_panel_master_snapshot_and_hash_manifest(tmp_path, monkeypatch):
     def get_prices(*args, **kwargs):
-        date = f"{kwargs['start_date'][:4]}-01-03"
+        start_date, end_date = kwargs["start_date"], kwargs["end_date"]
+        if start_date.endswith("01-01") and end_date.endswith("12-31"):
+            date = pd.bdate_range(end=end_date, periods=1)[0]
+            index = pd.MultiIndex.from_tuples(
+                [("Close", date), ("Volume", date)], names=["Field", "Date"]
+            )
+            return pd.DataFrame({"SID-A": [10.0, 1_000_000]}, index=index)
+        if start_date[:4] != end_date[:4] and start_date.endswith("12-31"):
+            dates = pd.to_datetime([start_date, end_date])
+            index = pd.MultiIndex.from_tuples(
+                [("Close", date) for date in dates], names=["Field", "Date"]
+            )
+            return pd.DataFrame({"SID-A": [10.0, 11.0]}, index=index)
+        dates = pd.bdate_range(end=kwargs["end_date"], periods=20)
         index = pd.MultiIndex.from_tuples(
-            [("Close", date), ("Volume", date)], names=["Field", "Date"]
+            [(field, date) for date in dates for field in ("Close", "Volume")],
+            names=["Field", "Date"],
         )
-        return pd.DataFrame({"SID-A": [10.0, 100]}, index=index)
+        return pd.DataFrame({
+            "SID-A": [value for _ in dates for value in (10.0, 1_000_000)]
+        }, index=index)
 
     securities = pd.DataFrame({
         "usstock_Symbol": ["AAA"],
@@ -132,13 +197,17 @@ def test_export_writes_panel_master_snapshot_and_hash_manifest(tmp_path, monkeyp
     output = tmp_path / "sample.csv.gz"
     manifest = export(output)
     metadata_path = tmp_path / "sample_security_master.csv.gz"
+    liquidity_path = tmp_path / "sample_monthly_liquidity.csv.gz"
     manifest_path = tmp_path / "sample.csv.gz.manifest.json"
-    assert output.exists() and metadata_path.exists() and manifest_path.exists()
+    assert output.exists() and metadata_path.exists() and liquidity_path.exists() and manifest_path.exists()
     assert manifest["security_metadata_file"] == metadata_path.name
     assert manifest["rows"] == 5
     assert [chunk["year"] for chunk in manifest["yearly_chunks"]] == list(range(2007, 2012))
+    assert manifest["monthly_liquidity_rows"] == 5
+    assert manifest["monthly_liquidity_sha256"]
     assert json.loads(manifest_path.read_text())["security_metadata_sha256"]
     assert pd.read_csv(output, compression="gzip").sid.nunique() == 1
     assert pd.read_csv(metadata_path, compression="gzip").loc[0, "sid"] == "SID-A"
+    assert pd.read_csv(liquidity_path, compression="gzip").date.nunique() == 5
     with pytest.raises(FileExistsError, match="Refusing to overwrite"):
         export(output)

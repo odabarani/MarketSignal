@@ -27,8 +27,9 @@ python export_quantrocket_stock_sample.py
 ```
 
 The exporter writes `data/research_inputs/quantrocket_usstock_learn_2007_2011.csv.gz`,
-a companion securities-master snapshot, and a JSON manifest with date coverage,
-security counts, source details, and SHA-256 hashes. The snapshot includes
+a point-in-time monthly liquidity file, a companion securities-master snapshot,
+and a JSON manifest with date coverage, security counts, source details, and
+SHA-256 hashes. The snapshot includes
 current symbols, delisting dates, first and last price dates, security type,
 and sector. These are current labels for research and event checks only; do not use them as
 historical signal inputs or to decide which stocks were eligible in the past.
@@ -40,8 +41,11 @@ data is ignored by Git.
 
 Each row is one `Sid` and date, with adjusted `Close` and `Volume`. `Sid` is a
 stable security identifier, so ticker changes do not join two companies by
-mistake. The bundle adjusts prices as of the end of the query; use price ratios
-and returns rather than historical nominal price levels as model inputs.
+mistake. The bundle adjusts prices through the end of each query. The exporter
+links the yearly chunks at their shared boundary so daily returns stay
+continuous; it also queries each month-end's dollar volume using that date as
+the query end. Use price ratios and returns rather than historical nominal
+price levels as model inputs.
 
 The source includes delisted securities, but neither file includes cash or stock
 consideration paid at delisting. A last observed quote is not necessarily the

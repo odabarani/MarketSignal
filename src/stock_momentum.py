@@ -8,6 +8,8 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from src.stock_panel import validate_liquidity_panel
+
 LOOKBACK_SESSIONS = 252
 SKIP_SESSIONS = 21
 MIN_HISTORY = 200
@@ -15,6 +17,7 @@ LIQUIDITY_SESSIONS = 20
 MIN_DOLLAR_VOLUME = 5_000_000.0
 TOP_FRACTION = 0.10
 TARGET_VOLATILITY = 0.10
+RESEARCH_DRAWDOWN_BUDGET = 0.20
 COSTS_BPS = (15, 30, 50)
 STRATEGIES = ("Cash", "SPY buy-and-hold", "Equal-weight stocks",
               "12-1 momentum", "12-1 momentum with SPY trend",
@@ -39,7 +42,7 @@ def volatility_exposure(
 
 def make_price_matrices(
     panel: pd.DataFrame, metadata: pd.DataFrame
-) -> tuple[pd.DataFrame, pd.DataFrame, str, list[str]]:
+) -> tuple[pd.DataFrame, str, list[str]]:
     """Build price and volume matrices, resolving SPY by its current master symbol."""
     if panel.duplicated(["sid", "date"]).any():
         raise ValueError("Price panel must contain one row per Sid/date.")
@@ -55,19 +58,17 @@ def make_price_matrices(
     if not stock_sids:
         raise ValueError("No common stocks or depositary receipts matched the sample.")
     close = panel.pivot(index="date", columns="sid", values="close").sort_index()
-    volume = panel.pivot(index="date", columns="sid", values="volume").sort_index()
     close.columns = close.columns.astype(str)
-    volume.columns = volume.columns.astype(str)
     if spy_sid not in close.columns:
         raise ValueError("SPY appears in the securities master but not the price panel.")
-    return close, volume, spy_sid, sorted(stock_sids)
+    return close, spy_sid, sorted(stock_sids)
 
 
 def build_targets(
     close: pd.DataFrame,
-    volume: pd.DataFrame,
     stock_sids: list[str],
     spy_sid: str,
+    liquidity_panel: pd.DataFrame,
 ) -> tuple[dict[str, dict[pd.Timestamp, dict[str, float]]], pd.Series, pd.Timestamp]:
     """Create monthly targets using only information available at each close."""
     dates = close.index
@@ -76,8 +77,10 @@ def build_targets(
     observations = close[stock_sids].notna().rolling(
         LOOKBACK_SESSIONS, min_periods=1
     ).sum()
-    dollar_volume = (close[stock_sids] * volume[stock_sids]).replace([np.inf, -np.inf], np.nan)
-    adv = dollar_volume.rolling(LIQUIDITY_SESSIONS, min_periods=15).mean()
+    liquidity_panel = validate_liquidity_panel(liquidity_panel)
+    adv = liquidity_panel.pivot(
+        index="date", columns="sid", values="average_dollar_volume"
+    ).reindex(index=dates, columns=stock_sids)
     spy_sma = filled[spy_sid].rolling(200, min_periods=200).mean()
     spy_above_trend = filled[spy_sid] > spy_sma
     stock_daily_returns = filled[stock_sids].pct_change(fill_method=None).fillna(0.0)
@@ -95,6 +98,10 @@ def build_targets(
         execution_date = dates[decision_index + 1]
         eligible = close.loc[decision, stock_sids].notna()
         eligible &= observations.loc[decision].ge(MIN_HISTORY)
+        if decision not in adv.index:
+            if decision_index >= LOOKBACK_SESSIONS:
+                raise ValueError(f"Monthly liquidity data is missing decision date {decision.date()}.")
+            continue
         eligible &= adv.loc[decision].ge(MIN_DOLLAR_VOLUME)
         scores = momentum.loc[decision, stock_sids]
         ranked = scores.loc[eligible].dropna().sort_values(ascending=False, kind="stable")
@@ -279,11 +286,12 @@ def summarize(
 def run_experiment(
     panel: pd.DataFrame,
     metadata: pd.DataFrame,
+    liquidity_panel: pd.DataFrame,
     cost_bps: tuple[int, ...] = COSTS_BPS,
 ) -> dict[str, Any]:
     """Compare simple stock momentum with cash, SPY, and equal-weight stocks."""
-    close, volume, spy_sid, stock_sids = make_price_matrices(panel, metadata)
-    targets, regime, start = build_targets(close, volume, stock_sids, spy_sid)
+    close, spy_sid, stock_sids = make_price_matrices(panel, metadata)
+    targets, regime, start = build_targets(close, stock_sids, spy_sid, liquidity_panel)
     results = []
     for scenario in ("zero_recovery", "last_quote"):
         returns = daily_returns(close, metadata, scenario)
@@ -299,6 +307,17 @@ def run_experiment(
                     "annual_gross_traded_notional": annual_turnover,
                     **summarize(equity, net_returns, regime, start),
                 })
+    spy_results = {
+        (row["cost_bps_per_side"], row["delisting_scenario"]): row
+        for row in results if row["strategy"] == "SPY buy-and-hold"
+    }
+    for row in results:
+        spy = spy_results[(row["cost_bps_per_side"], row["delisting_scenario"])]
+        row["excess_net_return_vs_spy"] = row["net_return"] - spy["net_return"]
+        row["excess_max_drawdown_vs_spy"] = row["max_drawdown"] - spy["max_drawdown"]
+        row["within_research_drawdown_budget"] = (
+            row["max_drawdown"] >= -RESEARCH_DRAWDOWN_BUDGET
+        )
     return {
         "phase": "historical_development_only",
         "status": "Comparison only; no strategy selected or profitability claim.",
@@ -307,10 +326,12 @@ def run_experiment(
             "momentum_skip_sessions": SKIP_SESSIONS,
             "min_history_observations": MIN_HISTORY,
             "liquidity_lookback_sessions": LIQUIDITY_SESSIONS,
+            "liquidity_values_as_of_each_month_end": True,
             "minimum_average_dollar_volume": MIN_DOLLAR_VOLUME,
             "momentum_top_fraction": TOP_FRACTION,
             "volatility_target": TARGET_VOLATILITY,
             "volatility_lookback_sessions": 20,
+            "research_drawdown_budget": RESEARCH_DRAWDOWN_BUDGET,
             "rebalancing": "Monthly signal at close, trade at next session close.",
             "universe": "Common Stock and Depositary Receipt per latest master snapshot; no active-only filter.",
             "execution_costs_bps_per_side": list(cost_bps),

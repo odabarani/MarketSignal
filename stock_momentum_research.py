@@ -10,7 +10,7 @@ from pathlib import Path
 import pandas as pd
 
 from src.stock_momentum import run_experiment
-from src.stock_panel import load_security_metadata, load_stock_panel
+from src.stock_panel import load_liquidity_panel, load_security_metadata, load_stock_panel
 
 
 def code_fingerprint() -> str:
@@ -27,6 +27,7 @@ def main() -> None:
         default=Path("data/research_inputs/quantrocket_usstock_learn_2007_2011.csv.gz"),
     )
     parser.add_argument("--metadata", type=Path, default=None)
+    parser.add_argument("--liquidity", type=Path, default=None)
     parser.add_argument(
         "--report", type=Path, default=Path("data/stock_momentum_development.json")
     )
@@ -38,17 +39,28 @@ def main() -> None:
         if args.prices.name.endswith(".csv.gz")
         else args.prices.stem + "_security_master" + args.prices.suffix
     )
+    liquidity_path = args.liquidity or args.prices.with_name(
+        args.prices.name[:-7] + "_monthly_liquidity.csv.gz"
+        if args.prices.name.endswith(".csv.gz")
+        else args.prices.stem + "_monthly_liquidity" + args.prices.suffix
+    )
     panel, price_source = load_stock_panel(args.prices)
     metadata, metadata_source = load_security_metadata(metadata_path, set(panel["sid"].astype(str)))
-    report = run_experiment(panel, metadata)
-    report["sources"] = {"prices": price_source, "security_metadata": metadata_source}
+    liquidity, liquidity_source = load_liquidity_panel(liquidity_path)
+    report = run_experiment(panel, metadata, liquidity)
+    report["sources"] = {
+        "prices": price_source,
+        "security_metadata": metadata_source,
+        "monthly_liquidity": liquidity_source,
+    }
     report["code_fingerprint"] = code_fingerprint()
     args.report.parent.mkdir(parents=True, exist_ok=True)
     args.report.write_text(json.dumps(report, indent=2, allow_nan=False) + "\n", encoding="utf-8")
     scores = pd.DataFrame(report["results"])
     print(scores.loc[
         (scores.cost_bps_per_side == 30) & (scores.delisting_scenario == "zero_recovery"),
-        ["strategy", "net_return", "annualized_return", "max_drawdown", "sharpe_zero_rf"],
+        ["strategy", "net_return", "excess_net_return_vs_spy", "max_drawdown",
+         "within_research_drawdown_budget", "sharpe_zero_rf"],
     ].to_string(index=False))
     print(f"Saved historical-development-only comparison: {args.report}")
 
