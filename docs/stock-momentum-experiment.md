@@ -29,6 +29,10 @@ delisting cases: zero recovery after the last observed price as a conservative
 stress, and carrying the last quote as an optimistic assumption. Neither is an
 observed payout, and the last quote is not an upper bound on merger proceeds;
 the spread between scenarios shows how much missing recovery data matters.
+It attributes net portfolio P&L, including trading costs, by sector and year so
+concentration and sector drag are visible. Sector labels come from the current
+securities master and are descriptive only, not point-in-time historical
+classifications.
 For each strategy, the report also gives a paired 20-session block-bootstrap
 range for compounded excess return versus SPY. It keeps strategy and benchmark
 days together and resamples contiguous blocks, but it only describes possible
