@@ -16,6 +16,8 @@ SECURITY_METADATA_COLUMNS = [
 ]
 LEARNING_SAMPLE_START = pd.Timestamp("2007-01-01")
 LEARNING_SAMPLE_END = pd.Timestamp("2011-12-31")
+LEARNING_SAMPLE_YEARS = range(2007, 2012)
+MIN_MARKET_SESSIONS_PER_YEAR = 220
 
 
 def validate_stock_panel(panel: pd.DataFrame) -> pd.DataFrame:
@@ -49,6 +51,39 @@ def validate_stock_panel(panel: pd.DataFrame) -> pd.DataFrame:
         raise ValueError("Volume cannot be negative.")
 
     return result.sort_values(["date", "sid"], kind="stable").reset_index(drop=True)
+
+
+def validate_learning_sample_coverage(
+    panel: pd.DataFrame, benchmark_sid: str
+) -> dict[str, object]:
+    """Reject an incomplete 2007–2011 sample using the benchmark's sessions."""
+    missing = {"sid", "date"}.difference(panel.columns)
+    if missing:
+        raise ValueError(f"Coverage check is missing required columns: {sorted(missing)}")
+    benchmark = panel.loc[panel["sid"].astype(str).eq(str(benchmark_sid)), "date"]
+    dates = pd.DatetimeIndex(pd.to_datetime(benchmark, errors="coerce").dropna().unique()).sort_values()
+    if dates.empty:
+        raise ValueError(f"Benchmark Sid {benchmark_sid} has no price dates.")
+    by_year = {}
+    for year in LEARNING_SAMPLE_YEARS:
+        sessions = dates[dates.year == year]
+        if (len(sessions) < MIN_MARKET_SESSIONS_PER_YEAR
+                or sessions.min() > pd.Timestamp(f"{year}-01-15")
+                or sessions.max() < pd.Timestamp(f"{year}-12-15")):
+            raise ValueError(
+                f"Incomplete benchmark coverage for {year}: {len(sessions)} sessions; "
+                "expected at least 220 sessions spanning most of the calendar year."
+            )
+        by_year[str(year)] = {
+            "sessions": int(len(sessions)),
+            "first_date": str(sessions.min().date()),
+            "last_date": str(sessions.max().date()),
+        }
+    return {
+        "benchmark_sid": str(benchmark_sid),
+        "minimum_sessions_per_year": MIN_MARKET_SESSIONS_PER_YEAR,
+        "by_year": by_year,
+    }
 
 
 def validate_liquidity_panel(panel: pd.DataFrame) -> pd.DataFrame:
