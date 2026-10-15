@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from src.fama_french import load_daily_risk_free
 from src.stock_momentum import run_experiment
 from src.stock_panel import (
     load_liquidity_panel,
@@ -20,7 +21,10 @@ from src.stock_panel import (
 
 def code_fingerprint() -> str:
     digest = sha256()
-    for path in (Path(__file__), Path("src/stock_momentum.py"), Path("src/stock_panel.py")):
+    for path in (
+        Path(__file__), Path("src/stock_momentum.py"),
+        Path("src/stock_panel.py"), Path("src/fama_french.py"),
+    ):
         digest.update(path.read_bytes())
     return digest.hexdigest()
 
@@ -33,6 +37,10 @@ def main() -> None:
     )
     parser.add_argument("--metadata", type=Path, default=None)
     parser.add_argument("--liquidity", type=Path, default=None)
+    parser.add_argument(
+        "--risk-free", type=Path,
+        default=Path("data/research_inputs/fama_french_3_factors_daily_202608.zip"),
+    )
     parser.add_argument(
         "--report", type=Path, default=Path("data/stock_momentum_development.json")
     )
@@ -56,11 +64,13 @@ def main() -> None:
         parser.error(f"Expected exactly one SPY Sid in security metadata, found {len(spy_sids)}.")
     price_source["market_session_coverage"] = validate_learning_sample_coverage(panel, spy_sids[0])
     liquidity, liquidity_source = load_liquidity_panel(liquidity_path)
-    report = run_experiment(panel, metadata, liquidity)
+    risk_free, risk_free_source = load_daily_risk_free(args.risk_free)
+    report = run_experiment(panel, metadata, liquidity, cash_returns=risk_free)
     report["sources"] = {
         "prices": price_source,
         "security_metadata": metadata_source,
         "monthly_liquidity": liquidity_source,
+        "risk_free_returns": risk_free_source,
     }
     report["code_fingerprint"] = code_fingerprint()
     args.report.parent.mkdir(parents=True, exist_ok=True)
@@ -69,7 +79,7 @@ def main() -> None:
     print(scores.loc[
         (scores.cost_bps_per_side == 30) & (scores.delisting_scenario == "zero_recovery"),
         ["strategy", "net_return", "excess_net_return_vs_spy", "max_drawdown",
-         "within_research_drawdown_budget", "sharpe_zero_rf"],
+         "within_research_drawdown_budget", "sharpe_excess_rf"],
     ].to_string(index=False))
     print(f"Saved historical-development-only comparison: {args.report}")
 
