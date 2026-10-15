@@ -302,14 +302,16 @@ def block_bootstrap_excess_return(
     """
     if block_sessions < 1 or resamples < 1:
         raise ValueError("Block length and resample count must be positive.")
-    paired = pd.concat(
-        [strategy_returns.rename("strategy"), benchmark_returns.rename("benchmark")],
-        axis=1,
-        join="inner",
-    ).dropna()
-    if paired.empty:
-        raise ValueError("Strategy and benchmark returns have no shared observations.")
-    values = paired.to_numpy(dtype=float)
+    if not strategy_returns.index.equals(benchmark_returns.index):
+        raise ValueError("Strategy and benchmark returns must have identical dates in identical order.")
+    if strategy_returns.index.has_duplicates or not strategy_returns.index.is_monotonic_increasing:
+        raise ValueError("Bootstrap return dates must be unique and chronologically ordered.")
+    values = np.column_stack([
+        strategy_returns.to_numpy(dtype=float),
+        benchmark_returns.to_numpy(dtype=float),
+    ])
+    if len(values) == 0:
+        raise ValueError("Strategy and benchmark returns must contain observations.")
     if not np.isfinite(values).all() or (values < -1).any():
         raise ValueError("Bootstrap returns must be finite and no less than -100%.")
 
