@@ -10,7 +10,12 @@ from pathlib import Path
 import pandas as pd
 
 from src.stock_momentum import run_experiment
-from src.stock_panel import load_liquidity_panel, load_security_metadata, load_stock_panel
+from src.stock_panel import (
+    load_liquidity_panel,
+    load_security_metadata,
+    load_stock_panel,
+    validate_learning_sample_coverage,
+)
 
 
 def code_fingerprint() -> str:
@@ -46,6 +51,10 @@ def main() -> None:
     )
     panel, price_source = load_stock_panel(args.prices)
     metadata, metadata_source = load_security_metadata(metadata_path, set(panel["sid"].astype(str)))
+    spy_sids = metadata.loc[metadata["symbol"].eq("SPY"), "sid"].astype(str).tolist()
+    if len(spy_sids) != 1:
+        parser.error(f"Expected exactly one SPY Sid in security metadata, found {len(spy_sids)}.")
+    price_source["market_session_coverage"] = validate_learning_sample_coverage(panel, spy_sids[0])
     liquidity, liquidity_source = load_liquidity_panel(liquidity_path)
     report = run_experiment(panel, metadata, liquidity)
     report["sources"] = {
