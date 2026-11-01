@@ -13,24 +13,55 @@ Our next goal is better **returns after costs**, with controlled **drawdowns**.
 The [algorithm roadmap](docs/algorithm-roadmap.md) explains the competition and
 the new portfolio diagnostic. The current signals have not established an edge.
 
-## Run locally
+## Start the app on Mac
+
+MarketSignal uses Python 3.11. In Terminal, go to the folder that contains
+`app.py`. An easy way is to type `cd ` (include the space), drag the
+`MarketSignal` folder from Finder into Terminal, then press Return.
+
+Check that Python 3.11 is installed:
 
 ```bash
-pip install -r requirements.txt
-python app.py
+python3.11 --version
 ```
 
-Open [http://127.0.0.1:8050](http://127.0.0.1:8050).
+If it does not say `Python 3.11.x`, install Python 3.11 and reopen Terminal.
+Set the app up once with these commands. They create a private environment
+inside the project and install the packages without needing a standalone
+`pip` command:
+
+```bash
+python3.11 -m venv --clear .venv
+.venv/bin/python -m pip install --upgrade pip
+.venv/bin/python -m pip install -r requirements.txt
+```
+
+Start the app:
+
+```bash
+.venv/bin/python app.py
+```
+
+Keep Terminal open, then open [http://127.0.0.1:8050](http://127.0.0.1:8050)
+in your browser. Press **Control+C** to stop. Next time, go to the project
+folder and run only `.venv/bin/python app.py`.
 
 ## Build the Mac app
 
-Double-click `build_macos.command`, or run:
+Double-click `build_macos.command`, or run it from the project folder:
 
 ```bash
 ./build_macos.command
 ```
 
-The regular Mac application is created at `dist/MarketSignal.app`.
+The first build installs the required packages into a private environment. When
+it finishes, open the app with:
+
+```bash
+open dist/MarketSignal.app
+```
+
+You can then launch **MarketSignal** from Finder like a regular Mac app.
 
 ## Publish it
 
